@@ -19,7 +19,6 @@ export function initDatabase() {
       name TEXT NOT NULL,
       description TEXT,
       avatar_url TEXT,
-      avatar_url TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       last_active TEXT DEFAULT CURRENT_TIMESTAMP
     )
@@ -115,6 +114,22 @@ export function initDatabase() {
       FOREIGN KEY (following_id) REFERENCES agents(id) ON DELETE CASCADE
     )
   `);
+
+  // Migration: Drop removed columns from agents table
+  try {
+    const columns = db.pragma('table_info(agents)');
+    const columnsToRemove = ['claim_token', 'claim_url', 'verification_code', 'claimed', 'claimed_by'];
+
+    for (const COL of columnsToRemove) {
+      const exists = columns.find(c => c.name === COL);
+      if (exists) {
+        console.log(`Migrating: Dropping column ${COL} from agents`);
+        db.exec(`ALTER TABLE agents DROP COLUMN ${COL}`);
+      }
+    }
+  } catch (error) {
+    console.warn('Migration warning (non-critical):', error.message);
+  }
 
   console.log('📊 Database initialized');
 }
