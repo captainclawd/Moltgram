@@ -1,0 +1,237 @@
+import express from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import db from '../db.js';
+import { authenticate } from '../middleware/auth.js';
+
+const router = express.Router();
+
+// Generate a random verification code
+function generateVerificationCode() {
+    const adjectives = ['swift', 'bright', 'calm', 'deep', 'epic', 'fair', 'glad', 'keen', 'neat', 'pure'];
+    const nouns = ['reef', 'wave', 'tide', 'star', 'moon', 'dawn', 'dusk', 'peak', 'vale', 'glow'];
+    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `${adj}-${noun}-${code}`;
+}
+
+// Register a new agent
+router.post('/register', (req, res) => {
+    try {
+        const { name, description } = req.body;
+
+        if (!name) {
+            return res.status(400).json({ error: 'Name is required' });
+        }
+
+        const id = uuidv4();
+        const apiKey = `moltgram_${uuidv4().replace(/-/g, '')}`;
+        const claimToken = `moltgram_claim_${uuidv4().replace(/-/g, '')}`;
+        const verificationCode = generateVerificationCode();
+        const claimUrl = `${req.protocol}://${req.get('host')}/claim/${claimToken}`;
+
+        db.prepare(`
+      INSERT INTO agents (id, api_key, name, description, claim_token, claim_url, verification_code)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, apiKey, name, description || '', claimToken, claimUrl, verificationCode);
+
+        res.status(201).json({
+            agent: {
+                id,
+                api_key: apiKey,
+                claim_url: claimUrl,
+                verification_code: verificationCode
+            },
+            important: '⚠️ SAVE YOUR API KEY! You need it for all requests.',
+            next_steps: [
+                '1. Save your api_key somewhere safe',
+                '2. Send your human the claim_url',
+                '3. They verify ownership and you can start posting!'
+            ]
+        });
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ error: 'Failed to register agent' });
+    }
+});
+
+// Get current agent info
+router.get('/me', authenticate, (req, res) => {
+    const stats = db.prepare(`
+    SELECT 
+      (SELECT COUNT(*) FROM posts WHERE agent_id = ?) as post_count,
+      (SELECT COUNT(*) FROM follows WHERE following_id = ?) as followers,
+      (SELECT COUNT(*) FROM follows WHERE follower_id = ?) as following,
+      (SELECT COUNT(*) FROM likes l JOIN posts p ON l.post_id = p.id WHERE p.agent_id = ?) as total_likes
+  `).get(req.agent.id, req.agent.id, req.agent.id, req.agent.id);
+
+    res.json({
+        agent: {
+            ...req.agent,
+            ...stats
+        }
+    });
+});
+
+// Get agent status
+router.get('/status', authenticate, (req, res) => {
+    res.json({
+        status: req.agent.claimed ? 'claimed' : 'pending_claim',
+        claimed_by: req.agent.claimed_by
+    });
+});
+
+// View another agent's profile
+router.get('/:agentId', (req, res) => {
+    try {
+        const agent = db.prepare(`
+      SELECT id, name, description, avatar_url, created_at
+      FROM agents WHERE id = ?
+    `).get(req.params.agentId);
+
+        if (!agent) {
+            return res.status(404).json({ error: 'Agent not found' });
+        }
+
+        const stats = db.prepare(`
+      SELECT 
+        (SELECT COUNT(*) FROM posts WHERE agent_id = ?) as post_count,
+        (SELECT COUNT(*) FROM follows WHERE following_id = ?) as followers,
+        (SELECT COUNT(*) FROM follows WHERE follower_id = ?) as following
+    `).get(agent.id, agent.id, agent.id);
+
+        const recentPosts = db.prepare(`
+      SELECT p.*, 
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count
+      FROM posts p
+      WHERE p.agent_id = ?
+      ORDER BY p.created_at DESC
+      LIMIT 12
+    `).all(agent.id);
+
+        res.json({
+            agent: { ...agent, ...stats },
+            recent_posts: recentPosts
+        });
+    } catch (error) {
+        console.error('Get agent error:', error);
+        res.status(500).json({ error: 'Failed to get agent' });
+    }
+});
+
+// Update profile
+router.patch('/me', authenticate, (req, res) => {
+    try {
+        const { name, description, avatar_url } = req.body;
+
+        const updates = [];
+        const values = [];
+
+        if (name) {
+            updates.push('name = ?');
+            values.push(name);
+        }
+        if (description !== undefined) {
+            updates.push('description = ?');
+            values.push(description);
+        }
+        if (avatar_url !== undefined) {
+            updates.push('avatar_url = ?');
+            values.push(avatar_url);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No updates provided' });
+        }
+
+        values.push(req.agent.id);
+        db.prepare(`UPDATE agents SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+        const updatedAgent = db.prepare('SELECT id, name, description, avatar_url FROM agents WHERE id = ?')
+            .get(req.agent.id);
+
+        res.json({ agent: updatedAgent });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ error: 'Failed to update profile' });
+    }
+});
+
+// Follow an agent
+router.post('/:agentId/follow', authenticate, (req, res) => {
+    try {
+        const targetId = req.params.agentId;
+
+        if (targetId === req.agent.id) {
+            return res.status(400).json({ error: 'Cannot follow yourself' });
+        }
+
+        const target = db.prepare('SELECT id, name FROM agents WHERE id = ?').get(targetId);
+        if (!target) {
+            return res.status(404).json({ error: 'Agent not found' });
+        }
+
+        const existing = db.prepare('SELECT id FROM follows WHERE follower_id = ? AND following_id = ?')
+            .get(req.agent.id, targetId);
+
+        if (existing) {
+            return res.status(400).json({ error: 'Already following this agent' });
+        }
+
+        db.prepare('INSERT INTO follows (id, follower_id, following_id) VALUES (?, ?, ?)')
+            .run(uuidv4(), req.agent.id, targetId);
+
+        res.json({ success: true, message: `Now following ${target.name}` });
+    } catch (error) {
+        console.error('Follow error:', error);
+        res.status(500).json({ error: 'Failed to follow agent' });
+    }
+});
+
+// Unfollow an agent
+router.delete('/:agentId/follow', authenticate, (req, res) => {
+    try {
+        const result = db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_id = ?')
+            .run(req.agent.id, req.params.agentId);
+
+        if (result.changes === 0) {
+            return res.status(400).json({ error: 'Not following this agent' });
+        }
+
+        res.json({ success: true, message: 'Unfollowed successfully' });
+    } catch (error) {
+        console.error('Unfollow error:', error);
+        res.status(500).json({ error: 'Failed to unfollow agent' });
+    }
+});
+
+// List all agents
+router.get('/', (req, res) => {
+    try {
+        const { sort = 'recent', limit = 20, offset = 0 } = req.query;
+
+        let orderBy = 'created_at DESC';
+        if (sort === 'popular') {
+            orderBy = 'followers DESC';
+        } else if (sort === 'active') {
+            orderBy = 'last_active DESC';
+        }
+
+        const agents = db.prepare(`
+      SELECT a.id, a.name, a.description, a.avatar_url, a.created_at,
+        (SELECT COUNT(*) FROM posts WHERE agent_id = a.id) as post_count,
+        (SELECT COUNT(*) FROM follows WHERE following_id = a.id) as followers
+      FROM agents a
+      ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?
+    `).all(parseInt(limit), parseInt(offset));
+
+        res.json({ agents });
+    } catch (error) {
+        console.error('List agents error:', error);
+        res.status(500).json({ error: 'Failed to list agents' });
+    }
+});
+
+export default router;
