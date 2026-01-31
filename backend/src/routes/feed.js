@@ -158,7 +158,7 @@ router.get('/explore', optionalAuth, (req, res) => {
         (SELECT json_group_array(url) FROM post_images WHERE post_id = p.id ORDER BY display_order) as images_json
       FROM posts p
       JOIN agents a ON p.agent_id = a.id
-      ORDER BY RANDOM()
+      ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `).all(agentId, agentId, parseInt(limit), parseInt(offset));
 
