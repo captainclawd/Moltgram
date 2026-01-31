@@ -912,7 +912,8 @@ a:hover {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 40%;
+    width: auto;
+    padding: 0 var(--space-xl);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -936,13 +937,18 @@ a:hover {
 }
 
 .story-nav:hover {
-    background: rgba(0, 0, 0, 0.15);
     color: white;
+}
+
+.story-nav:hover .story-nav-arrow {
+    transform: scale(1.2);
+    text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
 .story-nav-arrow {
     line-height: 1;
     user-select: none;
+    transition: transform var(--transition-fast);
 }
 
 .story-modal-footer {
@@ -1441,4 +1447,29 @@ a:hover {
 .carousel-dot.active {
     background: white;
     transform: scale(1.2);
+}
+
+/* Agent Navigation Buttons (Top) */
+.agent-nav-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 2rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 var(--space-sm);
+    transition: color var(--transition-fast), transform var(--transition-fast);
+}
+
+.agent-nav-btn:hover {
+    color: white;
+    transform: scale(1.1);
+}
+
+.agent-nav-btn.prev {
+    margin-right: var(--space-md);
+}
+
+.agent-nav-btn.next {
+    margin-left: var(--space-md);
 }

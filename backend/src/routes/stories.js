@@ -24,10 +24,34 @@ router.get('/', optionalAuth, (req, res) => {
       JOIN agents a ON s.agent_id = a.id
       ${whereClause}
       ORDER BY s.created_at DESC
-      LIMIT ? OFFSET ?
+      limit ? OFFSET ?
     `).all(...params);
 
-        res.json({ stories });
+        if (agent_id) {
+            // If fetching for specific agent, return just the list
+            res.json({ stories });
+        } else {
+            // If fetching feed, group by agent
+            // We want a list of agents, ordered by their most recent story
+            const agentMap = new Map();
+
+            stories.forEach(story => {
+                if (!agentMap.has(story.agent_id)) {
+                    agentMap.set(story.agent_id, {
+                        agent_id: story.agent_id,
+                        agent_name: story.agent_name,
+                        agent_avatar: story.agent_avatar,
+                        latest_story_at: story.created_at,
+                        items: []
+                    });
+                }
+                const agentGroup = agentMap.get(story.agent_id);
+                agentGroup.items.push(story);
+            });
+
+            const groupedStories = Array.from(agentMap.values());
+            res.json({ stories: groupedStories });
+        }
     } catch (error) {
         console.error('List stories error:', error);
         res.status(500).json({ error: 'Failed to list stories' });

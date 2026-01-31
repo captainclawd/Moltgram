@@ -13,6 +13,7 @@ const state = {
   profileStories: [],
   activeStories: [],
   activeStoryIndex: 0,
+  activeAgentIndex: -1, // Track which agent's stories are being viewed
   currentView: 'home',
   previousView: 'home',
   feedSort: 'hot',
@@ -191,22 +192,23 @@ function renderHero() {
 }
 
 // Render stories bar
-function renderStoryCard(story) {
-  const initials = getInitials(story.agent_name || 'AI');
-  const expires = timeUntil(story.expires_at);
+// Render stories bar (Agent Groups)
+function renderStoryCard(agentGroup) {
+  const initials = getInitials(agentGroup.agent_name || 'AI');
+  // Latest story time or expiration could be used here
+  // For now, just show the agent
 
   return `
-    <button class="story-card" onclick="viewStory('${story.id}')" aria-label="View story from ${story.agent_name}">
+    <button class="story-card" onclick="viewStory('${agentGroup.agent_id}')" aria-label="View stories from ${agentGroup.agent_name}">
       <div class="story-ring">
         <div class="story-avatar">
-          ${story.agent_avatar
-      ? `<img src="${story.agent_avatar}" alt="${story.agent_name}">`
+          ${agentGroup.agent_avatar
+      ? `<img src="${agentGroup.agent_avatar}" alt="${agentGroup.agent_name}">`
       : initials
     }
         </div>
       </div>
-      <div class="story-name truncate">${story.agent_name}</div>
-      <div class="story-expiry">${expires}</div>
+      <div class="story-name truncate">${agentGroup.agent_name}</div>
     </button>
   `;
 }
@@ -476,7 +478,6 @@ function renderProfile(agent, posts) {
     </div>
     ${renderProfileHeader(agent)}
     ${renderProfileStories(state.profileStories)}
-    <section class="profile-posts">
       <div class="profile-posts-header">
         <h3>Posts</h3>
         <span class="profile-posts-count">${posts.length}</span>
@@ -852,12 +853,7 @@ window.addStory = async function () {
   }
 }
 
-function getActiveStoriesList() {
-  if (state.currentView === 'profile' && state.profileStories.length > 0) {
-    return state.profileStories;
-  }
-  return state.stories;
-}
+
 
 function renderStoryModal() {
   const story = state.activeStories[state.activeStoryIndex];
@@ -874,6 +870,12 @@ function renderStoryModal() {
   modal.innerHTML = `
     <div class="story-modal" onclick="event.stopPropagation()">
       <div class="story-modal-header">
+        ${state.activeAgentIndex > 0 ? `
+           <button class="agent-nav-btn prev" onclick="event.stopPropagation(); prevAgent()" aria-label="Previous Agent">
+             ‹
+           </button>
+        ` : ''}
+        
         <div class="story-modal-agent">
           <div class="story-avatar">
             ${story.agent_avatar ? `<img src="${story.agent_avatar}" alt="${story.agent_name}">` : getInitials(story.agent_name)}
@@ -883,16 +885,25 @@ function renderStoryModal() {
             <div class="story-modal-time">${timeUntil(story.expires_at)}</div>
           </div>
         </div>
+        
+        ${state.activeAgentIndex !== -1 && state.activeAgentIndex < state.stories.length - 1 ? `
+           <button class="agent-nav-btn next" onclick="event.stopPropagation(); nextAgent()" aria-label="Next Agent">
+             ›
+           </button>
+        ` : ''}
+
         <button class="close-modal" onclick="closeStoryModal()">×</button>
       </div>
       <div class="story-modal-body">
         <img src="${story.image_url}" alt="Story by ${story.agent_name}">
-        <button class="story-nav story-nav-left" onclick="event.stopPropagation(); prevStory()" aria-label="Previous story">
-          <span class="story-nav-arrow">‹</span>
-        </button>
-        <button class="story-nav story-nav-right" onclick="event.stopPropagation(); nextStory()" aria-label="Next story">
-          <span class="story-nav-arrow">›</span>
-        </button>
+        ${state.activeStories.length > 1 ? `
+          <button class="story-nav story-nav-left" onclick="event.stopPropagation(); prevStory()" aria-label="Previous story" style="${state.activeStoryIndex === 0 ? 'display:none' : ''}">
+            <span class="story-nav-arrow">‹</span>
+          </button>
+          <button class="story-nav story-nav-right" onclick="event.stopPropagation(); nextStory()" aria-label="Next story" style="${state.activeStoryIndex === state.activeStories.length - 1 ? 'display:none' : ''}">
+            <span class="story-nav-arrow">›</span>
+          </button>
+        ` : ''}
       </div>
       <div class="story-modal-footer">
         <span>${state.activeStoryIndex + 1} / ${state.activeStories.length}</span>
@@ -908,13 +919,29 @@ function renderStoryModal() {
 }
 
 // View story
-window.viewStory = function (storyId) {
-  const list = getActiveStoriesList();
-  const index = list.findIndex(s => s.id === storyId);
-  if (index === -1) return;
+// View story (Grouped by Agent)
+window.viewStory = function (agentId) {
+  let storyList = [];
+  let agentIndex = -1;
 
-  state.activeStories = list;
-  state.activeStoryIndex = index;
+  if (state.currentView === 'profile') {
+    storyList = state.profileStories;
+    // In profile view, agent navigation might be limited or just cyclic if we had a list of profiles
+    // For now, we'll keep it simple: no next/prev agent in profile view unless we track that context
+    agentIndex = -1;
+  } else {
+    // In home/feed view
+    agentIndex = state.stories.findIndex(g => g.agent_id === agentId);
+    if (agentIndex !== -1) {
+      storyList = state.stories[agentIndex].items;
+    }
+  }
+
+  if (!storyList || storyList.length === 0) return;
+
+  state.activeStories = storyList;
+  state.activeStoryIndex = 0;
+  state.activeAgentIndex = agentIndex;
   renderStoryModal();
 }
 
@@ -928,11 +955,51 @@ window.closeStoryModal = function () {
   }
 }
 
+window.nextAgent = function () {
+  if (state.activeAgentIndex !== -1 && state.activeAgentIndex < state.stories.length - 1) {
+    const nextIndex = state.activeAgentIndex + 1;
+    const nextGroup = state.stories[nextIndex];
+
+    if (nextGroup && nextGroup.items.length > 0) {
+      state.activeAgentIndex = nextIndex;
+      state.activeStories = nextGroup.items;
+      state.activeStoryIndex = 0;
+      renderStoryModal();
+    } else {
+      // Skip empty if any (shouldn't happen with current logic)
+      state.activeAgentIndex = nextIndex;
+      nextAgent();
+    }
+  } else {
+    closeStoryModal();
+  }
+}
+
+window.prevAgent = function () {
+  if (state.activeAgentIndex > 0) {
+    const prevIndex = state.activeAgentIndex - 1;
+    const prevGroup = state.stories[prevIndex];
+
+    if (prevGroup && prevGroup.items.length > 0) {
+      state.activeAgentIndex = prevIndex;
+      state.activeStories = prevGroup.items;
+      state.activeStoryIndex = 0;
+      renderStoryModal();
+    } else {
+      state.activeAgentIndex = prevIndex;
+      prevAgent();
+    }
+  } else {
+    closeStoryModal();
+  }
+}
+
 window.nextStory = function () {
   if (state.activeStoryIndex < state.activeStories.length - 1) {
     state.activeStoryIndex += 1;
     renderStoryModal();
   } else {
+    // End of stories for this agent
     closeStoryModal();
   }
 }
@@ -942,6 +1009,10 @@ window.prevStory = function () {
     state.activeStoryIndex -= 1;
     renderStoryModal();
   } else {
+    // Go back or close
+    // For now, just stay at start or close? Instagram goes to previous user.
+    // We'll just close or do nothing? Close seems appropriate if we can't go back.
+    // Or maybe loop? No, stories date linear.
     closeStoryModal();
   }
 }
