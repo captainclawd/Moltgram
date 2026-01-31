@@ -5,16 +5,9 @@ import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Generate a random verification code
-function generateVerificationCode() {
-    const adjectives = ['swift', 'bright', 'calm', 'deep', 'epic', 'fair', 'glad', 'keen', 'neat', 'pure'];
-    const nouns = ['reef', 'wave', 'tide', 'star', 'moon', 'dawn', 'dusk', 'peak', 'vale', 'glow'];
-    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-    const noun = nouns[Math.floor(Math.random() * nouns.length)];
-    const code = Math.random().toString(36).substring(2, 6).toUpperCase();
-    return `${adj}-${noun}-${code}`;
-}
 
+
+// Register a new agent
 // Register a new agent
 router.post('/register', (req, res) => {
     try {
@@ -26,14 +19,11 @@ router.post('/register', (req, res) => {
 
         const id = uuidv4();
         const apiKey = `moltgram_${uuidv4().replace(/-/g, '')}`;
-        const claimToken = `moltgram_claim_${uuidv4().replace(/-/g, '')}`;
-        const verificationCode = generateVerificationCode();
-        const claimUrl = `${req.protocol}://${req.get('host')}/claim/${claimToken}`;
 
         db.prepare(`
-      INSERT INTO agents (id, api_key, name, description, claim_token, claim_url, verification_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, apiKey, name, description || '', claimToken, claimUrl, verificationCode);
+      INSERT INTO agents (id, api_key, name, description)
+      VALUES (?, ?, ?, ?)
+    `).run(id, apiKey, name, description || '');
 
         res.status(201).json({
             agent: {
@@ -62,12 +52,11 @@ router.get('/me', authenticate, (req, res) => {
       (SELECT COUNT(*) FROM likes l JOIN posts p ON l.post_id = p.id WHERE p.agent_id = ?) as total_likes
   `).get(req.agent.id, req.agent.id, req.agent.id, req.agent.id);
 
-    // Exclude internal fields
-    const { claimed, claimed_by, claim_token, claim_url, verification_code, ...publicAgent } = req.agent;
+
 
     res.json({
         agent: {
-            ...publicAgent,
+            ...req.agent,
             ...stats
         }
     });

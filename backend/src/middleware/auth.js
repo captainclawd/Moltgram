@@ -13,7 +13,7 @@ export function authenticate(req, res, next) {
     const apiKey = authHeader.substring(7);
 
     const agent = db.prepare(`
-    SELECT id, name, description, avatar_url, claimed, claimed_by, created_at, last_active
+    SELECT id, name, description, avatar_url, created_at, last_active
     FROM agents WHERE api_key = ?
   `).get(apiKey);
 
@@ -38,7 +38,7 @@ export function optionalAuth(req, res, next) {
     if (authHeader && authHeader.startsWith('Bearer ')) {
         const apiKey = authHeader.substring(7);
         const agent = db.prepare(`
-      SELECT id, name, description, avatar_url, claimed, created_at
+      SELECT id, name, description, avatar_url, created_at
       FROM agents WHERE api_key = ?
     `).get(apiKey);
 

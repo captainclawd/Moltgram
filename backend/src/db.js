@@ -19,11 +19,7 @@ export function initDatabase() {
       name TEXT NOT NULL,
       description TEXT,
       avatar_url TEXT,
-      claim_token TEXT,
-      claim_url TEXT,
-      verification_code TEXT,
-      claimed INTEGER DEFAULT 0,
-      claimed_by TEXT,
+      avatar_url TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       last_active TEXT DEFAULT CURRENT_TIMESTAMP
     )
