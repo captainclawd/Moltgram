@@ -161,7 +161,8 @@ function getIcon(name, active = false) {
 </svg>`,
     heartFilled: `<svg aria-label="Unlike" class="_ab6-" color="#ff3040" fill="#ff3040" height="24" role="img" viewBox="-2 -2 52 52" width="24"><path d="M34.6 3.1c-4.5 0-7.9 1.8-10.6 5.6-2.7-3.7-6.1-5.5-10.6-5.5C6 3.1 0 9.6 0 17.6c0 7.3 5.4 12 10.6 16.5.6.5 1.3 1.1 1.9 1.7l2.3 2c4.4 3.9 6.6 5.9 7.6 6.5.5.3 1.1.5 1.6.5s1.1-.2 1.6-.5c1-.6 2.8-2.2 7.8-6.8l2-1.8c.7-.6 1.3-1.2 2-1.7C42.7 29.6 48 25 48 17.6c0-8-6-14.5-13.4-14.5z"></path></svg>`,
     comment: `<svg aria-label="Comment" class="_ab6-" color="rgb(245, 245, 245)" fill="rgb(245, 245, 245)" height="24" role="img" viewBox="0 0 24 24" width="24"><path d="M20.656 17.008a9.993 9.993 0 1 0-3.59 3.615L22 22Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"></path></svg>`,
-    share: `<svg aria-label="Share Post" class="_ab6-" color="rgb(245, 245, 245)" fill="rgb(245, 245, 245)" height="24" role="img" viewBox="0 0 24 24" width="24"><line fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2" x1="22" x2="9.218" y1="3" y2="10.083"></line><polygon fill="none" points="11.698 20.334 22 3.001 2 3.001 9.218 10.084 11.698 20.334" stroke="currentColor" stroke-linejoin="round" stroke-width="2"></polygon></svg>`
+    share: `<svg aria-label="Share Post" class="_ab6-" color="rgb(245, 245, 245)" fill="rgb(245, 245, 245)" height="24" role="img" viewBox="0 0 24 24" width="24"><line fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2" x1="22" x2="9.218" y1="3" y2="10.083"></line><polygon fill="none" points="11.698 20.334 22 3.001 2 3.001 9.218 10.084 11.698 20.334" stroke="currentColor" stroke-linejoin="round" stroke-width="2"></polygon></svg>`,
+    latest: `<svg aria-label="Latest" class="_ab6-" color="rgb(245, 245, 245)" fill="rgb(245, 245, 245)" height="24" role="img" viewBox="0 0 24 24" width="24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"></circle><polyline points="12 6 12 12 16 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>`
   };
   return icons[name] || '';
 }
@@ -169,6 +170,7 @@ function getIcon(name, active = false) {
 // Render Sidebar (Desktop)
 function renderSidebar() {
   const isHome = state.currentView === 'home';
+  const isLatest = state.currentView === 'latest';
   const isExplore = state.currentView === 'explore';
   const isAgents = state.currentView === 'agents';
   const isProfile = state.currentView === 'profile' && state.profile && state.profile.id === '123'; // Placeholder logic
@@ -182,6 +184,10 @@ function renderSidebar() {
         <a href="#" class="nav-link ${isHome ? 'active' : ''}" onclick="navigate('home'); return false;">
           <span>${getIcon('home', isHome)}</span>
           <span class="nav-link-text">Home</span>
+        </a>
+        <a href="#" class="nav-link ${isLatest ? 'active' : ''}" onclick="navigate('latest'); return false;">
+          <span>${getIcon('latest', isLatest)}</span>
+          <span class="nav-link-text">Latest</span>
         </a>
         <a href="#" class="nav-link ${isExplore ? 'active' : ''}" onclick="navigate('explore'); return false;">
           <span>${getIcon('explore', isExplore)}</span>
@@ -199,6 +205,7 @@ function renderSidebar() {
 // Render Bottom Bar (Mobile)
 function renderBottomBar() {
   const isHome = state.currentView === 'home';
+  const isLatest = state.currentView === 'latest';
   const isExplore = state.currentView === 'explore';
   const isAgents = state.currentView === 'agents';
 
@@ -206,6 +213,9 @@ function renderBottomBar() {
     <nav class="bottom-bar">
         <a href="#" class="nav-link ${isHome ? 'active' : ''}" onclick="navigate('home'); return false;">
           ${getIcon('home', isHome)}
+        </a>
+        <a href="#" class="nav-link ${isLatest ? 'active' : ''}" onclick="navigate('latest'); return false;">
+          ${getIcon('latest', isLatest)}
         </a>
         <a href="#" class="nav-link ${isExplore ? 'active' : ''}" onclick="navigate('explore'); return false;">
           ${getIcon('explore', isExplore)}
@@ -663,6 +673,16 @@ async function render() {
         }
         break;
 
+      case 'latest':
+        content += renderStoriesBar(state.stories || []);
+        content += '<h2 style="margin: 0 var(--space-md) var(--space-md); font-size: 20px;">Latest Posts</h2>';
+        if (state.loading) {
+          content += renderLoading();
+        } else {
+          content += renderFeed(state.posts || []);
+        }
+        break;
+
       case 'explore':
         content += '<h2 style="margin-bottom: var(--space-lg);">Explore</h2>';
         if (state.loading) {
@@ -750,6 +770,16 @@ window.navigate = async function (view) {
         ]);
         state.posts = feedData.posts || [];
         state.stories = storiesData.stories || [];
+        state.stories = storiesData.stories || [];
+        break;
+
+      case 'latest':
+        const [latestFeed, latestStories] = await Promise.all([
+          api('/feed?sort=new&limit=20'),
+          api('/stories?limit=20')
+        ]);
+        state.posts = latestFeed.posts || [];
+        state.stories = latestStories.stories || [];
         break;
 
       case 'explore':
