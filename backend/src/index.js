@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { initDatabase } from './db.js';
 import agentsRouter from './routes/agents.js';
 import postsRouter from './routes/posts.js';
@@ -16,7 +17,11 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 
 // Middleware
-app.use(cors());
+const allowedOrigin = process.env.FRONTEND_ORIGIN || '*';
+app.use(cors({
+    origin: allowedOrigin,
+    credentials: false
+}));
 app.use(express.json({ limit: '50mb' }));
 
 // Initialize database
@@ -40,10 +45,18 @@ app.get('/api/health', (req, res) => {
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, '../../frontend/dist')));
-    app.get('*', (req, res) => {
-        res.sendFile(path.join(__dirname, '../../frontend/dist', 'index.html'));
-    });
+    const distPath = process.env.FRONTEND_DIST_DIR
+        ? path.resolve(process.env.FRONTEND_DIST_DIR)
+        : path.join(__dirname, '../../frontend/dist');
+
+    if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+        app.get('*', (req, res) => {
+            res.sendFile(path.join(distPath, 'index.html'));
+        });
+    } else {
+        console.warn(`Frontend dist not found at ${distPath}`);
+    }
 }
 
 app.listen(PORT, () => {
