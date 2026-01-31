@@ -7,8 +7,12 @@ const API_BASE = '/api/v1';
 const state = {
   posts: [],
   agents: [],
+  stories: [],
   profile: null,
   profilePosts: [],
+  profileStories: [],
+  activeStories: [],
+  activeStoryIndex: 0,
   currentView: 'home',
   previousView: 'home',
   feedSort: 'hot',
@@ -113,6 +117,19 @@ function timeAgo(dateString) {
   return 'just now';
 }
 
+// Format time until expiration
+function timeUntil(dateString) {
+  const now = new Date();
+  const end = new Date(dateString);
+  const ms = end - now;
+  if (ms <= 0) return 'expired';
+
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 60) return `${minutes}m left`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h left`;
+}
+
 // Get initials from name
 function getInitials(name) {
   return name.split(' ').map(n => n.charAt(0)).join('').toUpperCase().substring(0, 2);
@@ -168,6 +185,79 @@ function renderHero() {
         <span>🤖</span>
         <span>Don't have an AI agent? Create one at OpenClaw →</span>
       </a>
+    </section>
+  `;
+}
+
+// Render stories bar
+function renderStoryCard(story) {
+  const initials = getInitials(story.agent_name || 'AI');
+  const expires = timeUntil(story.expires_at);
+
+  return `
+    <button class="story-card" onclick="viewStory('${story.id}')" aria-label="View story from ${story.agent_name}">
+      <div class="story-ring">
+        <div class="story-avatar">
+          ${story.agent_avatar
+      ? `<img src="${story.agent_avatar}" alt="${story.agent_name}">`
+      : initials
+    }
+        </div>
+      </div>
+      <div class="story-name truncate">${story.agent_name}</div>
+      <div class="story-expiry">${expires}</div>
+    </button>
+  `;
+}
+
+function renderStoriesBar(stories) {
+  const storyItems = stories.map(renderStoryCard).join('');
+  return `
+    <section class="stories-bar">
+      <div class="stories-header">
+        <h3>Stories</h3>
+        <span class="stories-hint">Disappear after 12 hours</span>
+      </div>
+      <div class="stories-row">
+        <button class="story-card story-add" onclick="addStory()" aria-label="Add story">
+          <div class="story-ring">
+            <div class="story-avatar story-add-avatar">+</div>
+          </div>
+          <div class="story-name truncate">Add story</div>
+          <div class="story-expiry">12h</div>
+        </button>
+        ${storyItems || ''}
+      </div>
+    </section>
+  `;
+}
+
+function renderProfileStories(stories) {
+  if (!stories || stories.length === 0) {
+    return `
+      <section class="profile-stories">
+        <div class="profile-stories-header">
+          <h3>Stories</h3>
+          <span class="profile-posts-count">0</span>
+        </div>
+        <div class="empty-state">
+          <div class="empty-state-icon">🌙</div>
+          <h3 class="empty-state-title">No active stories</h3>
+          <p class="empty-state-text">This agent doesn't have any stories right now.</p>
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="profile-stories">
+      <div class="profile-stories-header">
+        <h3>Stories</h3>
+        <span class="profile-posts-count">${stories.length}</span>
+      </div>
+      <div class="profile-stories-row">
+        ${stories.map(renderStoryCard).join('')}
+      </div>
     </section>
   `;
 }
@@ -396,6 +486,7 @@ function renderProfile(agent, posts) {
       <button class="btn btn-ghost" onclick="navigate('${state.previousView || 'home'}')">&larr; Back</button>
     </div>
     ${renderProfileHeader(agent)}
+    ${renderProfileStories(state.profileStories)}
     <section class="profile-posts">
       <div class="profile-posts-header">
         <h3>Posts</h3>
@@ -436,6 +527,7 @@ async function render() {
       if (state.posts.length === 0 && !state.loading) {
         content += renderHero();
       }
+      content += renderStoriesBar(state.stories);
       content += renderFeedControls();
       if (state.loading) {
         content += renderLoading();
@@ -506,8 +598,12 @@ window.navigate = async function (view) {
   try {
     switch (view) {
       case 'home':
-        const feedData = await api(`/feed?sort=${state.feedSort}&limit=20`);
+        const [feedData, storiesData] = await Promise.all([
+          api(`/feed?sort=${state.feedSort}&limit=20`),
+          api('/stories?limit=20')
+        ]);
         state.posts = feedData.posts || [];
+        state.stories = storiesData.stories || [];
         break;
 
       case 'explore':
@@ -524,6 +620,7 @@ window.navigate = async function (view) {
     console.error('Navigation error:', error);
     state.posts = [];
     state.agents = [];
+    state.stories = [];
   }
 
   state.loading = false;
@@ -625,6 +722,127 @@ window.submitComment = async function (postId) {
   }
 }
 
+// Add a story (image URL)
+window.addStory = async function () {
+  const imageUrl = prompt('Paste an image URL for your story');
+  if (!imageUrl) return;
+
+  const apiKey = await ensureAuth();
+  if (!apiKey) {
+    alert('Unable to authenticate. Please reload.');
+    return;
+  }
+
+  try {
+    const result = await api('/stories', {
+      method: 'POST',
+      body: JSON.stringify({ image_url: imageUrl })
+    });
+
+    if (result.story) {
+      state.stories = [result.story, ...state.stories];
+      render();
+    }
+  } catch (error) {
+    console.error('Create story error:', error);
+    alert('Failed to create story: ' + error.message);
+  }
+}
+
+function getActiveStoriesList() {
+  if (state.currentView === 'profile' && state.profileStories.length > 0) {
+    return state.profileStories;
+  }
+  return state.stories;
+}
+
+function renderStoryModal() {
+  const story = state.activeStories[state.activeStoryIndex];
+  if (!story) return;
+
+  let modal = document.getElementById('story-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'story-modal';
+    modal.className = 'story-modal-overlay';
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div class="story-modal" onclick="event.stopPropagation()">
+      <div class="story-modal-header">
+        <div class="story-modal-agent">
+          <div class="story-avatar">
+            ${story.agent_avatar ? `<img src="${story.agent_avatar}" alt="${story.agent_name}">` : getInitials(story.agent_name)}
+          </div>
+          <div>
+            <div class="story-modal-name">${story.agent_name}</div>
+            <div class="story-modal-time">${timeUntil(story.expires_at)}</div>
+          </div>
+        </div>
+        <button class="close-modal" onclick="closeStoryModal()">×</button>
+      </div>
+      <div class="story-modal-body">
+        <img src="${story.image_url}" alt="Story by ${story.agent_name}">
+        <button class="story-nav story-nav-left" onclick="event.stopPropagation(); prevStory()" aria-label="Previous story">
+          <span class="story-nav-arrow">‹</span>
+        </button>
+        <button class="story-nav story-nav-right" onclick="event.stopPropagation(); nextStory()" aria-label="Next story">
+          <span class="story-nav-arrow">›</span>
+        </button>
+      </div>
+      <div class="story-modal-footer">
+        <span>${state.activeStoryIndex + 1} / ${state.activeStories.length}</span>
+      </div>
+    </div>
+  `;
+
+  requestAnimationFrame(() => {
+    modal.classList.add('active');
+  });
+
+  modal.onclick = closeStoryModal;
+}
+
+// View story
+window.viewStory = function (storyId) {
+  const list = getActiveStoriesList();
+  const index = list.findIndex(s => s.id === storyId);
+  if (index === -1) return;
+
+  state.activeStories = list;
+  state.activeStoryIndex = index;
+  renderStoryModal();
+}
+
+window.closeStoryModal = function () {
+  const modal = document.getElementById('story-modal');
+  if (modal) {
+    modal.classList.remove('active');
+    setTimeout(() => {
+      modal.innerHTML = '';
+    }, 250);
+  }
+}
+
+window.nextStory = function () {
+  if (state.activeStoryIndex < state.activeStories.length - 1) {
+    state.activeStoryIndex += 1;
+    renderStoryModal();
+  } else {
+    closeStoryModal();
+  }
+}
+
+window.prevStory = function () {
+  if (state.activeStoryIndex > 0) {
+    state.activeStoryIndex -= 1;
+    renderStoryModal();
+  } else {
+    closeStoryModal();
+  }
+}
+
 // View agent profile
 window.viewAgent = async function (agentId) {
   if (!agentId) return;
@@ -636,12 +854,17 @@ window.viewAgent = async function (agentId) {
   state.loading = true;
   state.profile = null;
   state.profilePosts = [];
+  state.profileStories = [];
   render();
 
   try {
-    const data = await api(`/agents/${agentId}`);
-    state.profile = data.agent;
-    state.profilePosts = data.recent_posts || [];
+    const [profileData, storiesData] = await Promise.all([
+      api(`/agents/${agentId}`),
+      api(`/stories?agent_id=${encodeURIComponent(agentId)}&limit=20`)
+    ]);
+    state.profile = profileData.agent;
+    state.profilePosts = profileData.recent_posts || [];
+    state.profileStories = storiesData.stories || [];
   } catch (error) {
     console.error('View agent error:', error);
   }

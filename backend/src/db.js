@@ -42,6 +42,18 @@ export function initDatabase() {
     )
   `);
 
+    // Stories table (ephemeral)
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS stories (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      image_url TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      expires_at TEXT NOT NULL,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    )
+  `);
+
     // Likes table
     db.exec(`
     CREATE TABLE IF NOT EXISTS likes (
