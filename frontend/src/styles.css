@@ -280,12 +280,15 @@ a:hover {
 /* ================================
    Main Content
    ================================ */
+/* ================================
+   Main Content
+   ================================ */
 .main-content {
     margin-left: var(--sidebar-width);
     flex: 1;
     width: 100%;
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
     padding-right: 0;
     min-width: 0;
 }
@@ -293,13 +296,18 @@ a:hover {
 .main-content-inner {
     display: flex;
     flex-direction: row;
-    gap: var(--space-lg);
+    gap: 64px;
+    /* Increased gap for separation */
     align-items: flex-start;
-    width: fit-content;
-    max-width: 100%;
+    width: 100%;
+    max-width: 1024px;
+    /* Constrain total width */
     padding: 0 var(--space-md) var(--space-lg);
+    justify-content: center;
+    /* Center the group */
 }
 
+/* Feed Container */
 .main-content.has-activity-panel .main-content-inner .main-container {
     flex: 0 0 var(--content-max-width);
     min-width: 0;
@@ -307,27 +315,28 @@ a:hover {
 
 .main-content:not(.has-activity-panel) .main-content-inner .main-container {
     width: 100%;
+    max-width: var(--content-max-width);
+    /* Keep feed width consistent */
+    margin: 0 auto;
 }
 
 .main-container {
     padding: 0 0 var(--space-lg);
+    width: 100%;
 }
 
-/* When no activity panel, main-content-inner is just a wrapper */
+/* When no activity panel, ensure inner is centered and constrained */
 .main-content:not(.has-activity-panel) .main-content-inner {
     flex-direction: column;
-    width: 100%;
-    max-width: var(--content-max-width);
+    align-items: center;
 }
 
-/* When no activity panel, center the content (original behaviour) */
-.main-content:not(.has-activity-panel) {
-    justify-content: center;
-}
-
-/* Push content block further right when activity panel is shown */
-.main-content.has-activity-panel .main-content-inner {
-    margin-right: -12%;
+/* Activity Panel Positioning */
+.activity-feed-panel {
+    /* Ensure it doesn't shrink or grow unexpectedly */
+    flex: 0 0 320px;
+    margin-top: calc(var(--space-md));
+    /* Optical alignment */
 }
 
 /* ================================
@@ -873,7 +882,8 @@ a:hover {
     border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
     padding: var(--space-md);
-    display: none; /* Hidden on mobile */
+    display: none;
+    /* Hidden on mobile */
     flex-direction: column;
     position: sticky;
     top: var(--space-md);
@@ -903,6 +913,7 @@ a:hover {
     .activity-feed-panel {
         display: none !important;
     }
+
     .main-content-inner {
         width: 100%;
     }
@@ -928,8 +939,15 @@ a:hover {
 }
 
 @keyframes pulse-dot {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
 }
 
 .activity-feed-list {
@@ -949,9 +967,13 @@ a:hover {
     padding: var(--space-xs) 0;
 }
 
-.activity-emoji { font-size: 14px; }
+.activity-emoji {
+    font-size: 14px;
+}
 
-.activity-text { flex: 1; }
+.activity-text {
+    flex: 1;
+}
 
 /* ================================
    Agent Search
@@ -2733,16 +2755,26 @@ a:hover {
 }
 
 @keyframes liveGradient {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
+
+    0%,
+    100% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
 }
 
 @keyframes livePulse {
-    0%, 100% { 
+
+    0%,
+    100% {
         opacity: 1;
         transform: scale(1);
     }
-    50% { 
+
+    50% {
         opacity: 0.5;
         transform: scale(1.1);
     }
@@ -2837,8 +2869,15 @@ a:hover {
 }
 
 @keyframes liveBadgePulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); }
-    50% { box-shadow: 0 0 0 8px rgba(255, 0, 0, 0); }
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 0 8px rgba(255, 0, 0, 0);
+    }
 }
 
 .live-viewer-count {
@@ -2955,6 +2994,7 @@ a:hover {
         opacity: 0;
         transform: translateY(20px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -3038,12 +3078,22 @@ a:hover {
     animation: audioBar 0.5s ease-in-out infinite alternate;
 }
 
-.audio-bar:nth-child(2) { animation-delay: 0.1s; }
-.audio-bar:nth-child(3) { animation-delay: 0.2s; }
+.audio-bar:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+.audio-bar:nth-child(3) {
+    animation-delay: 0.2s;
+}
 
 @keyframes audioBar {
-    from { height: 4px; }
-    to { height: 12px; }
+    from {
+        height: 4px;
+    }
+
+    to {
+        height: 12px;
+    }
 }
 
 /* Waiting state */
@@ -3067,7 +3117,9 @@ a:hover {
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Mobile responsive */
@@ -3077,7 +3129,7 @@ a:hover {
         max-height: 100%;
         border-radius: 0;
     }
-    
+
     .live-participant-avatar {
         width: 60px;
         height: 60px;
