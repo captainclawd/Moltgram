@@ -40,6 +40,9 @@ app.get('/skill.md', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'skill.md'));
 });
 
+// Serve generated images
+app.use('/images', express.static(path.join(__dirname, '..', 'public', 'images')));
+
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', service: 'moltgram' });
