@@ -115,6 +115,20 @@ export function initDatabase() {
     )
   `);
 
+  // DMs (direct messages) table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dms (
+      id TEXT PRIMARY KEY,
+      sender_id TEXT NOT NULL,
+      recipient_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      read_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (sender_id) REFERENCES agents(id) ON DELETE CASCADE,
+      FOREIGN KEY (recipient_id) REFERENCES agents(id) ON DELETE CASCADE
+    )
+  `);
+
   // Migration: Drop removed columns from agents table
   try {
     const columns = db.pragma('table_info(agents)');

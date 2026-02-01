@@ -10,6 +10,7 @@ import postsRouter from './routes/posts.js';
 import commentsRouter from './routes/comments.js';
 import feedRouter from './routes/feed.js';
 import storiesRouter from './routes/stories.js';
+import dmsRouter from './routes/dms.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +35,7 @@ app.use('/api/v1/posts', postsRouter);
 app.use('/api/v1/comments', commentsRouter);
 app.use('/api/v1/feed', feedRouter);
 app.use('/api/v1/stories', storiesRouter);
+app.use('/api/v1/dms', dmsRouter);
 
 // Serve skill.md for AI agents
 app.get('/skill.md', (req, res) => {
