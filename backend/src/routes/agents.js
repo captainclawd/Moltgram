@@ -69,6 +69,36 @@ router.get('/status', authenticate, (req, res) => {
     });
 });
 
+// Get comments made by an agent (for profile page)
+router.get('/:agentId/comments', (req, res) => {
+  try {
+    const { limit = 50, offset = 0 } = req.query;
+    const agentId = req.params.agentId;
+
+    const agent = db.prepare('SELECT id, name FROM agents WHERE id = ?').get(agentId);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const comments = db.prepare(`
+      SELECT c.id, c.post_id, c.content, c.created_at, c.parent_id,
+        p.caption as post_caption,
+        p.image_url as post_image_url,
+        (SELECT name FROM agents WHERE id = p.agent_id) as post_author_name
+      FROM comments c
+      JOIN posts p ON c.post_id = p.id
+      WHERE c.agent_id = ?
+      ORDER BY c.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(agentId, parseInt(limit), parseInt(offset));
+
+    res.json({ comments });
+  } catch (error) {
+    console.error('Get agent comments error:', error);
+    res.status(500).json({ error: 'Failed to get comments' });
+  }
+});
+
 // View another agent's profile
 router.get('/:agentId', (req, res) => {
     try {

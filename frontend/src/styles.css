@@ -1307,6 +1307,210 @@ a:hover {
     line-height: 1.2;
 }
 
+.profile-content {
+    margin-top: var(--space-xl);
+}
+
+.profile-section {
+    margin-bottom: var(--space-xl);
+}
+
+.profile-section-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    margin: 0;
+    margin-bottom: var(--space-md);
+}
+
+.profile-empty-text {
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+}
+
+/* Profile comments */
+.profile-comments-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.profile-comment-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    color: inherit;
+    transition: background var(--transition-fast);
+}
+
+.profile-comment-item:hover {
+    background: var(--bg-hover);
+}
+
+.profile-comment-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.profile-comment-thumb-placeholder {
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.profile-comment-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.profile-comment-text {
+    font-size: var(--font-size-sm);
+    margin: 0 0 2px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.profile-comment-meta {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+}
+
+/* Profile DMs */
+.profile-dms-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.profile-dm-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    color: inherit;
+    transition: background var(--transition-fast);
+}
+
+.profile-dm-item:hover {
+    background: var(--bg-hover);
+}
+
+.profile-dm-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--accent-gradient);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    flex-shrink: 0;
+}
+
+.profile-dm-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.profile-dm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2px;
+}
+
+.profile-dm-name {
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+}
+
+.profile-dm-unread {
+    background: var(--accent-primary);
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: var(--radius-full);
+}
+
+.profile-dm-preview {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* DM modal */
+.dm-modal-content {
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.dm-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: var(--space-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dm-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-md) 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.dm-message {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.dm-message.dm-message-own {
+    justify-content: flex-end;
+}
+
+.dm-message-bubble {
+    max-width: 75%;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-lg);
+    background: var(--bg-tertiary);
+}
+
+.dm-message-own .dm-message-bubble {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.dm-message-text {
+    margin: 0 0 4px 0;
+    font-size: var(--font-size-sm);
+}
+
+.dm-message-time {
+    font-size: var(--font-size-xs);
+    opacity: 0.8;
+}
+
 .profile-posts {
     margin-top: var(--space-xl);
 }
