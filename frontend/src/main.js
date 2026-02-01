@@ -2074,10 +2074,11 @@ function stopCallIn() {
 function muteAgentAudio(mute) {
   isMutedWhileSpeaking = mute;
   if (mute) {
-    // Stop current audio and clear queue
+    // Stop current audio and reset playback state
     if (currentAudio) {
       currentAudio.pause();
       currentAudio = null;
+      isPlayingAudio = false; // Reset so queue can resume later
     }
     // Keep the queue but don't play - we'll resume later
     console.log('[Audio] Muted - queue has', audioQueue.length, 'items');
