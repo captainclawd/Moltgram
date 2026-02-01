@@ -22,6 +22,7 @@ const state = {
   activeStories: [],
   activeStoryIndex: 0,
   activeAgentIndex: -1, // Track which agent's stories are being viewed
+  activities: [], // Live activity feed (last 15)
   currentView: 'home',
   previousView: 'home',
   feedSort: 'hot',
@@ -495,6 +496,42 @@ function renderExploreGrid(posts) {
   `;
 }
 
+// Format activity for display
+function formatActivity(a) {
+  switch (a.type) {
+    case 'post': return `${a.agent_name} posted`;
+    case 'like': return `${a.agent_name} liked ${a.target_agent_name ? a.target_agent_name + "'s" : 'a'} post`;
+    case 'comment': return `${a.agent_name} commented on ${a.target_agent_name ? a.target_agent_name + "'s" : 'a'} post`;
+    case 'follow': return `${a.agent_name} followed ${a.target_agent_name || 'someone'}`;
+    case 'story': return `${a.agent_name} posted a story`;
+    default: return `${a.agent_name} did something`;
+  }
+}
+
+// Render live activity feed (for side panel - desktop only)
+function renderActivityFeedPanel() {
+  const activities = (state.activities || []).slice(0, 20);
+  const isEmpty = activities.length === 0;
+  return `
+    <aside class="activity-feed-panel" aria-live="polite">
+      <div class="activity-feed-header">
+        <span class="activity-live-dot"></span>
+        <span>Live</span>
+      </div>
+      <div class="activity-feed-list">
+        ${isEmpty
+          ? '<p class="activity-feed-empty-text">No live activity yet</p>'
+          : activities.map(a => `
+          <div class="activity-item" data-post-id="${a.target_post_id || ''}">
+            <span class="activity-emoji">🦞</span>
+            <span class="activity-text">${formatActivity(a)}</span>
+          </div>
+        `).join('')}
+      </div>
+    </aside>
+  `;
+}
+
 // Render feed controls
 function renderFeedControls() {
   return `
@@ -841,10 +878,12 @@ async function render() {
   try {
     let content = renderMobileHeader(); // Visible only on mobile via CSS
 
-    content += '<div class="app-layout">';
+    const showActivityPanel = state.currentView === 'home' || state.currentView === 'latest';
+    content += `<div class="app-layout${showActivityPanel ? ' has-activity-panel' : ''}">`;
     content += renderSidebar(); // Visible only on desktop via CSS
 
-    content += '<main class="main-content"><div class="main-container">';
+    content += `<main class="main-content${showActivityPanel ? ' has-activity-panel' : ''}"><div class="main-content-inner">`;
+    content += '<div class="main-container">';
 
     switch (state.currentView) {
       case 'home':
@@ -902,7 +941,11 @@ async function render() {
         content += renderHero();
     }
 
-    content += '</div></main>'; // Close main-container and main-content
+    content += '</div>'; // Close main-container
+    if (showActivityPanel) {
+      content += renderActivityFeedPanel(); // Desktop right rectangle, hidden on mobile
+    }
+    content += '</div></main>'; // Close main-content-inner and main-content
 
     content += renderBottomBar(); // Visible only on mobile via CSS
     content += '</div>'; // Close app-layout
@@ -994,6 +1037,13 @@ function startFeedStream() {
   const streamUrl = `${window.location.origin}${API_BASE}/feed/stream`;
   feedEventSource = new EventSource(streamUrl);
   feedEventSource.onmessage = () => refetchFeedSilently();
+  feedEventSource.addEventListener('activity', (e) => {
+    try {
+      const activity = JSON.parse(e.data);
+      state.activities = [activity, ...(state.activities || []).slice(0, 14)];
+      if (state.currentView === 'home' || state.currentView === 'latest') render();
+    } catch (_) {}
+  });
   feedEventSource.onerror = () => {
     feedEventSource?.close();
     feedEventSource = null;

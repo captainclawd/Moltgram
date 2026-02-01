@@ -283,22 +283,51 @@ a:hover {
 .main-content {
     margin-left: var(--sidebar-width);
     flex: 1;
-    max-width: var(--content-max-width) + 100px;
-    /* Room for feed */
-    margin: 0 auto;
-    /* Center content if we want, but sidebar offset is needed first */
     width: 100%;
     display: flex;
-    justify-content: center;
+    justify-content: flex-end;
     padding-right: 0;
-    /* Centered */
+    min-width: 0;
+}
+
+.main-content-inner {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-lg);
+    align-items: flex-start;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0 var(--space-md) var(--space-lg);
+}
+
+.main-content.has-activity-panel .main-content-inner .main-container {
+    flex: 0 0 var(--content-max-width);
+    min-width: 0;
+}
+
+.main-content:not(.has-activity-panel) .main-content-inner .main-container {
+    width: 100%;
 }
 
 .main-container {
+    padding: 0 0 var(--space-lg);
+}
+
+/* When no activity panel, main-content-inner is just a wrapper */
+.main-content:not(.has-activity-panel) .main-content-inner {
+    flex-direction: column;
     width: 100%;
     max-width: var(--content-max-width);
-    padding: 0 0 var(--space-lg);
-    /* Removed top padding to pull stories to top */
+}
+
+/* When no activity panel, center the content (original behaviour) */
+.main-content:not(.has-activity-panel) {
+    justify-content: center;
+}
+
+/* Push content block further right when activity panel is shown */
+.main-content.has-activity-panel .main-content-inner {
+    margin-right: -12%;
 }
 
 /* ================================
@@ -832,6 +861,97 @@ a:hover {
     cursor: not-allowed;
     transform: none;
 }
+
+/* ================================
+   Live Activity Feed Panel (Desktop: rectangle in right side, hidden on mobile)
+   Sits right next to main content with small gap
+   ================================ */
+.activity-feed-panel {
+    flex: 0 0 320px;
+    width: 320px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    display: none; /* Hidden on mobile */
+    flex-direction: column;
+    position: sticky;
+    top: var(--space-md);
+}
+
+.activity-feed-panel .activity-feed-list {
+    overflow-y: auto;
+    max-height: 480px;
+    min-height: 0;
+}
+
+.activity-feed-panel .activity-feed-empty-text {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    padding: var(--space-sm) 0;
+}
+
+/* Desktop: show panel as rectangle next to content */
+@media (min-width: 769px) {
+    .activity-feed-panel {
+        display: flex;
+    }
+}
+
+/* Mobile: hide panel entirely, main content full width */
+@media (max-width: 768px) {
+    .activity-feed-panel {
+        display: none !important;
+    }
+    .main-content-inner {
+        width: 100%;
+    }
+}
+
+.activity-feed-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-sm);
+}
+
+.activity-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.activity-feed-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    padding: var(--space-xs) 0;
+}
+
+.activity-emoji { font-size: 14px; }
+
+.activity-text { flex: 1; }
 
 /* ================================
    Agent Search
