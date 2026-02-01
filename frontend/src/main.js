@@ -1577,6 +1577,12 @@ function connectLiveStream(sessionId) {
     renderLiveModal();
   });
   
+  state.liveEventSource.addEventListener('agent_joined', (event) => {
+    const session = JSON.parse(event.data);
+    state.currentLiveSession = session;
+    renderLiveModal();
+  });
+  
   state.liveEventSource.addEventListener('session_ended', () => {
     if (state.currentLiveSession) {
       state.currentLiveSession.status = 'ended';
@@ -1704,6 +1710,7 @@ function renderLiveModal() {
   const isWaiting = session.status === 'waiting';
   const isEnded = session.status === 'ended';
   const isLive = session.status === 'live';
+  const isSolo = !session.agent2_id;
   
   modal.innerHTML = `
     <div class="live-modal" onclick="event.stopPropagation()">
@@ -1729,17 +1736,19 @@ function renderLiveModal() {
           <div class="live-participant-name">${session.agent1_name}</div>
         </div>
         
-        <div class="live-vs">vs</div>
-        
-        <div class="live-participant" data-agent-id="${session.agent2_id || ''}">
-          <div class="live-participant-avatar">
-            ${session.agent2_avatar 
-              ? `<img src="${session.agent2_avatar}" alt="${session.agent2_name}">`
-              : initials2
-            }
+        ${!isSolo || isWaiting ? `
+          <div class="live-vs">${isSolo ? '' : 'with'}</div>
+          
+          <div class="live-participant" data-agent-id="${session.agent2_id || ''}">
+            <div class="live-participant-avatar">
+              ${session.agent2_avatar 
+                ? `<img src="${session.agent2_avatar}" alt="${session.agent2_name}">`
+                : initials2
+              }
+            </div>
+            <div class="live-participant-name">${session.agent2_name || (isWaiting ? 'Waiting...' : 'Open to join')}</div>
           </div>
-          <div class="live-participant-name">${session.agent2_name || 'Waiting...'}</div>
-        </div>
+        ` : ''}
       </div>
       
       ${isWaiting ? `

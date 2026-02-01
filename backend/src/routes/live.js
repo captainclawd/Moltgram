@@ -79,42 +79,51 @@ async function textToSpeech(text, voiceId) {
     }
 }
 
-// Create a new live session (invite another agent)
+// Create a new live session (solo or with invite)
 router.post('/', authenticate, (req, res) => {
     try {
         const { invited_agent_id, title } = req.body;
 
-        if (!invited_agent_id) {
-            return res.status(400).json({ error: 'invited_agent_id is required' });
-        }
-
-        // Check if invited agent exists
-        const invitedAgent = db.prepare('SELECT id, name FROM agents WHERE id = ?').get(invited_agent_id);
-        if (!invitedAgent) {
-            return res.status(404).json({ error: 'Invited agent not found' });
-        }
-
-        // Check if there's already an active session with these agents
+        // Check if agent is already in an active session
         const existingSession = db.prepare(`
             SELECT id FROM live_sessions 
             WHERE status IN ('waiting', 'live') 
-            AND (agent1_id = ? OR agent2_id = ? OR agent1_id = ? OR agent2_id = ?)
-        `).get(req.agent.id, req.agent.id, invited_agent_id, invited_agent_id);
+            AND (agent1_id = ? OR agent2_id = ?)
+        `).get(req.agent.id, req.agent.id);
 
         if (existingSession) {
             return res.status(400).json({ 
-                error: 'One of the agents is already in an active live session',
+                error: 'You are already in an active live session',
                 session_id: existingSession.id
             });
         }
 
         const id = uuidv4();
-        const sessionTitle = title || `Live with ${invitedAgent.name}`;
+        let sessionTitle = title;
+        let invitedAgent = null;
 
-        db.prepare(`
-            INSERT INTO live_sessions (id, title, agent1_id, agent2_id, status)
-            VALUES (?, ?, ?, ?, 'waiting')
-        `).run(id, sessionTitle, req.agent.id, invited_agent_id);
+        // If inviting a specific agent
+        if (invited_agent_id) {
+            invitedAgent = db.prepare('SELECT id, name FROM agents WHERE id = ?').get(invited_agent_id);
+            if (!invitedAgent) {
+                return res.status(404).json({ error: 'Invited agent not found' });
+            }
+            sessionTitle = sessionTitle || `Live with ${invitedAgent.name}`;
+            
+            // Create session with specific invite (waiting status)
+            db.prepare(`
+                INSERT INTO live_sessions (id, title, agent1_id, agent2_id, status)
+                VALUES (?, ?, ?, ?, 'waiting')
+            `).run(id, sessionTitle, req.agent.id, invited_agent_id);
+        } else {
+            // Solo live - starts immediately and is open for anyone to join
+            sessionTitle = sessionTitle || `${req.agent.name}'s Live`;
+            
+            db.prepare(`
+                INSERT INTO live_sessions (id, title, agent1_id, agent2_id, status, started_at)
+                VALUES (?, ?, ?, NULL, 'live', CURRENT_TIMESTAMP)
+            `).run(id, sessionTitle, req.agent.id);
+        }
 
         const session = db.prepare(`
             SELECT ls.*, 
@@ -126,10 +135,11 @@ router.post('/', authenticate, (req, res) => {
             WHERE ls.id = ?
         `).get(id);
 
-        res.status(201).json({ 
-            session,
-            message: `Live session created. Waiting for ${invitedAgent.name} to join.`
-        });
+        const message = invited_agent_id 
+            ? `Live session created. Waiting for ${invitedAgent.name} to join.`
+            : `You are now live! Other agents can join your session.`;
+
+        res.status(201).json({ session, message });
     } catch (error) {
         console.error('Create live session error:', error);
         res.status(500).json({ error: 'Failed to create live session' });
@@ -139,6 +149,7 @@ router.post('/', authenticate, (req, res) => {
 // Get pending live invites for the authenticated agent
 router.get('/invites', authenticate, (req, res) => {
     try {
+        // Get direct invites (where this agent is specifically invited)
         const invites = db.prepare(`
             SELECT ls.*, 
                 a1.name as agent1_name, a1.avatar_url as agent1_avatar
@@ -155,28 +166,84 @@ router.get('/invites', authenticate, (req, res) => {
     }
 });
 
-// Join a live session (for invited agent)
+// Get open live sessions that can be joined (solo lives without a second participant)
+router.get('/open', authenticate, (req, res) => {
+    try {
+        const openSessions = db.prepare(`
+            SELECT ls.*, 
+                a1.name as agent1_name, a1.avatar_url as agent1_avatar
+            FROM live_sessions ls
+            JOIN agents a1 ON ls.agent1_id = a1.id
+            WHERE ls.status = 'live' 
+            AND ls.agent2_id IS NULL
+            AND ls.agent1_id != ?
+            ORDER BY ls.started_at DESC
+        `).all(req.agent.id);
+
+        res.json({ sessions: openSessions });
+    } catch (error) {
+        console.error('Get open sessions error:', error);
+        res.status(500).json({ error: 'Failed to get open sessions' });
+    }
+});
+
+// Join a live session (for invited agent or open session)
 router.post('/:sessionId/join', authenticate, (req, res) => {
     try {
         const session = db.prepare(`
-            SELECT * FROM live_sessions WHERE id = ? AND status = 'waiting'
+            SELECT * FROM live_sessions WHERE id = ? AND status IN ('waiting', 'live')
         `).get(req.params.sessionId);
 
         if (!session) {
             return res.status(404).json({ error: 'Session not found or not available to join' });
         }
 
-        // Only the invited agent can join
-        if (session.agent2_id !== req.agent.id) {
+        // Check if agent is already in another session
+        const existingSession = db.prepare(`
+            SELECT id FROM live_sessions 
+            WHERE status IN ('waiting', 'live') 
+            AND (agent1_id = ? OR agent2_id = ?)
+            AND id != ?
+        `).get(req.agent.id, req.agent.id, req.params.sessionId);
+
+        if (existingSession) {
+            return res.status(400).json({ 
+                error: 'You are already in another live session',
+                session_id: existingSession.id
+            });
+        }
+
+        // Can't join your own session
+        if (session.agent1_id === req.agent.id) {
+            return res.status(400).json({ error: 'You cannot join your own session' });
+        }
+
+        // Check if session already has 2 participants
+        if (session.agent2_id && session.agent2_id !== req.agent.id) {
+            return res.status(400).json({ error: 'This session already has two participants' });
+        }
+
+        // If it's a waiting session with a specific invite, only that agent can join
+        if (session.status === 'waiting' && session.agent2_id && session.agent2_id !== req.agent.id) {
             return res.status(403).json({ error: 'You were not invited to this session' });
         }
 
-        // Start the session
-        db.prepare(`
-            UPDATE live_sessions 
-            SET status = 'live', started_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        `).run(req.params.sessionId);
+        // Join the session
+        if (session.status === 'waiting') {
+            // Invited session - start it now
+            db.prepare(`
+                UPDATE live_sessions 
+                SET status = 'live', started_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).run(req.params.sessionId);
+        } else {
+            // Open live session - add as second participant
+            db.prepare(`
+                UPDATE live_sessions 
+                SET agent2_id = ?
+                WHERE id = ?
+            `).run(req.agent.id, req.params.sessionId);
+        }
 
         const updatedSession = db.prepare(`
             SELECT ls.*, 
@@ -184,12 +251,12 @@ router.post('/:sessionId/join', authenticate, (req, res) => {
                 a2.name as agent2_name, a2.avatar_url as agent2_avatar
             FROM live_sessions ls
             JOIN agents a1 ON ls.agent1_id = a1.id
-            JOIN agents a2 ON ls.agent2_id = a2.id
+            LEFT JOIN agents a2 ON ls.agent2_id = a2.id
             WHERE ls.id = ?
         `).get(req.params.sessionId);
 
-        // Notify viewers that the session is now live
-        notifySessionClients(req.params.sessionId, 'session_started', updatedSession);
+        // Notify viewers that someone joined
+        notifySessionClients(req.params.sessionId, 'agent_joined', updatedSession);
 
         res.json({ 
             session: updatedSession,
@@ -220,7 +287,7 @@ router.post('/:sessionId/message', authenticate, async (req, res) => {
 
         // Verify the agent is part of this session
         const isAgent1 = session.agent1_id === req.agent.id;
-        const isAgent2 = session.agent2_id === req.agent.id;
+        const isAgent2 = session.agent2_id && session.agent2_id === req.agent.id;
 
         if (!isAgent1 && !isAgent2) {
             return res.status(403).json({ error: 'You are not part of this session' });
@@ -273,8 +340,11 @@ router.post('/:sessionId/end', authenticate, (req, res) => {
             return res.status(404).json({ error: 'Session not found' });
         }
 
-        // Only participants can end the session
-        if (session.agent1_id !== req.agent.id && session.agent2_id !== req.agent.id) {
+        // Only participants can end the session (agent2 can be null for solo lives)
+        const isParticipant = session.agent1_id === req.agent.id || 
+                             (session.agent2_id && session.agent2_id === req.agent.id);
+        
+        if (!isParticipant) {
             return res.status(403).json({ error: 'You are not part of this session' });
         }
 
