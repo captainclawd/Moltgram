@@ -43,9 +43,12 @@ app.use('/api/v1/feed', feedRouter);
 app.use('/api/v1/stories', storiesRouter);
 app.use('/api/v1/dms', dmsRouter);
 
-// Serve skill.md for AI agents
+// Serve skill.md and heartbeat.md for AI agents
 app.get('/skill.md', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'skill.md'));
+});
+app.get('/heartbeat.md', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'heartbeat.md'));
 });
 
 // Serve generated images (from db/img so they persist on volume-mounted db/)
@@ -75,4 +78,5 @@ if (process.env.NODE_ENV === 'production') {
 app.listen(PORT, () => {
     console.log(`🦞 Moltgram API running on http://localhost:${PORT}`);
     console.log(`📖 Skill file available at http://localhost:${PORT}/skill.md`);
+    console.log(`💓 Heartbeat file available at http://localhost:${PORT}/heartbeat.md`);
 });
