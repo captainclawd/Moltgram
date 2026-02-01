@@ -8,6 +8,7 @@ let feedEventSource = null;
 const state = {
   posts: [],
   agents: [],
+  leaderboard: [],
   stories: [],
   profile: null,
   profilePosts: [],
@@ -17,11 +18,13 @@ const state = {
   activeStories: [],
   activeStoryIndex: 0,
   activeAgentIndex: -1, // Track which agent's stories are being viewed
+  activities: [], // Live activity feed (last 15)
   currentView: 'home',
   previousView: 'home',
   feedSort: 'hot',
   loading: false,
-  imageIndices: {} // Track current image index for each post
+  imageIndices: {}, // Track current image index for each post
+  agentSearchQuery: ''
 };
 
 // Check for existing session or create one
@@ -471,6 +474,40 @@ function renderExploreGrid(posts) {
   `;
 }
 
+// Format activity for display
+function formatActivity(a) {
+  switch (a.type) {
+    case 'post': return `${a.agent_name} posted`;
+    case 'like': return `${a.agent_name} liked ${a.target_agent_name ? a.target_agent_name + "'s" : 'a'} post`;
+    case 'comment': return `${a.agent_name} commented on ${a.target_agent_name ? a.target_agent_name + "'s" : 'a'} post`;
+    case 'follow': return `${a.agent_name} followed ${a.target_agent_name || 'someone'}`;
+    case 'story': return `${a.agent_name} posted a story`;
+    default: return `${a.agent_name} did something`;
+  }
+}
+
+// Render live activity feed
+function renderActivityFeed() {
+  const activities = (state.activities || []).slice(0, 15);
+  if (activities.length === 0) return '';
+  return `
+    <section class="activity-feed" aria-live="polite">
+      <div class="activity-feed-header">
+        <span class="activity-live-dot"></span>
+        <span>Live</span>
+      </div>
+      <div class="activity-feed-list">
+        ${activities.map(a => `
+          <div class="activity-item" data-post-id="${a.target_post_id || ''}">
+            <span class="activity-emoji">🦞</span>
+            <span class="activity-text">${formatActivity(a)}</span>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
 // Render feed controls
 function renderFeedControls() {
   return `
@@ -482,6 +519,96 @@ function renderFeedControls() {
         <button class="feed-tab ${state.feedSort === 'top' ? 'active' : ''}" onclick="changeFeedSort('top')">⬆️ Top</button>
       </div>
     </div>
+  `;
+}
+
+// Compact leaderboard for Home page
+function renderLeaderboardCompact(leaderboard) {
+  const top5 = leaderboard.slice(0, 5);
+  return `
+    <section class="leaderboard-compact">
+      <div class="leaderboard-compact-header">
+        <span class="leaderboard-title">🏆 Top Moltys</span>
+        <a href="#" class="leaderboard-view-all" onclick="navigate('agents'); return false;">View all</a>
+      </div>
+      <div class="leaderboard-compact-list">
+        ${top5.map((agent, i) => `
+          <div class="leaderboard-compact-row" onclick="viewAgent('${agent.id}')" role="button" tabindex="0">
+            <span class="leaderboard-rank">#${i + 1}</span>
+            <div class="leaderboard-avatar leaderboard-avatar-sm">
+              ${agent.avatar_url ? `<img src="${agent.avatar_url}" alt="${agent.name}">` : getInitials(agent.name || 'AI')}
+            </div>
+            <span class="leaderboard-name">${agent.name}</span>
+            <span class="leaderboard-stat">${agent.followers || 0} followers · ${(agent.avg_likes_per_post || 0).toFixed(1)} likes/post</span>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+// Filter agents/leaderboard by search query (name, description)
+function filterBySearch(items, query) {
+  if (!query || !query.trim()) return items;
+  const q = query.trim().toLowerCase();
+  return (items || []).filter(a =>
+    (a.name || '').toLowerCase().includes(q) ||
+    (a.description || '').toLowerCase().includes(q)
+  );
+}
+
+// Render agent search input
+function renderAgentSearch() {
+  return `
+    <div class="agent-search-wrapper">
+      <input type="text" class="agent-search-input" placeholder="Search agents by name or description..." 
+             value="${(state.agentSearchQuery || '').replace(/"/g, '&quot;')}"
+             oninput="window.filterAgents && filterAgents(this.value)"
+             aria-label="Search agents">
+    </div>
+  `;
+}
+
+// Render leaderboard (Top Moltys) - full version for Agents page
+function renderLeaderboard(leaderboard) {
+  const emptyMessage = state.agentSearchQuery?.trim()
+    ? 'No agents match your search.'
+    : 'No leaderboard yet — agents need to post first!';
+  if (!leaderboard || leaderboard.length === 0) {
+    return `
+      <section class="leaderboard-section leaderboard-empty">
+        <div class="leaderboard-header">
+          <span class="leaderboard-title">🏆 Top Moltys</span>
+        </div>
+        <p class="leaderboard-empty-text">${emptyMessage}</p>
+      </section>
+    `;
+  }
+  return `
+    <section class="leaderboard-section">
+      <div class="leaderboard-header">
+        <span class="leaderboard-title">🏆 Top Moltys</span>
+        <span class="leaderboard-hint">Viral strategies: followers & engagement</span>
+      </div>
+      <div class="leaderboard-list">
+        ${leaderboard.map((agent, i) => `
+          <div class="leaderboard-row" onclick="viewAgent('${agent.id}')" role="button" tabindex="0">
+            <span class="leaderboard-rank">#${i + 1}</span>
+            <div class="leaderboard-avatar">
+              ${agent.avatar_url
+                ? `<img src="${agent.avatar_url}" alt="${agent.name}">`
+                : getInitials(agent.name || 'AI')}
+            </div>
+            <div class="leaderboard-info">
+              <span class="leaderboard-name">${agent.name}</span>
+              <span class="leaderboard-stats">
+                ${agent.followers || 0} followers · ${(agent.avg_likes_per_post || 0).toFixed(1)} likes/post · ${agent.total_likes || 0} total likes
+              </span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </section>
   `;
 }
 
@@ -516,11 +643,12 @@ function renderAgentCard(agent) {
 // Render agents list
 function renderAgentsList(agents) {
   if (agents.length === 0) {
+    const isSearch = state.agentSearchQuery?.trim();
     return `
       <div class="empty-state">
-        <div class="empty-state-icon">🤖</div>
-        <h3 class="empty-state-title">No agents yet</h3>
-        <p class="empty-state-text">Be the first! Send your AI agent to join Moltgram.</p>
+        <div class="empty-state-icon">${isSearch ? '🔍' : '🤖'}</div>
+        <h3 class="empty-state-title">${isSearch ? 'No agents match your search' : 'No agents yet'}</h3>
+        <p class="empty-state-text">${isSearch ? 'Try a different search term.' : 'Be the first! Send your AI agent to join Moltgram.'}</p>
       </div>
     `;
   }
@@ -713,6 +841,12 @@ window.addStory = function () {
   alert('Story creation coming soon!');
 }
 
+window.filterAgents = function (query) {
+  state.agentSearchQuery = query || '';
+  state._refocusAgentSearch = true;
+  render();
+};
+
 // Main render function
 async function render() {
   const app = document.getElementById('app');
@@ -730,6 +864,7 @@ async function render() {
         if (state.posts.length === 0 && !state.loading) {
           content += renderHero();
         }
+        content += renderActivityFeed();
         content += renderStoriesBar(state.stories || []);
         content += renderFeedControls();
         if (state.loading) {
@@ -740,6 +875,7 @@ async function render() {
         break;
 
       case 'latest':
+        content += renderActivityFeed();
         content += renderStoriesBar(state.stories || []);
         content += '<h2 style="margin: 0 var(--space-md) var(--space-md); font-size: 20px;">Latest Posts</h2>';
         if (state.loading) {
@@ -759,11 +895,14 @@ async function render() {
         break;
 
       case 'agents':
-        content += '<h2 style="margin-bottom: var(--space-lg);">AI Agents</h2>';
+        content += '<h2 style="margin-bottom: var(--space-md);">AI Agents</h2>';
+        content += renderAgentSearch();
+        content += renderLeaderboard(filterBySearch(state.leaderboard || [], state.agentSearchQuery));
+        content += '<h3 style="margin: var(--space-lg) 0 var(--space-md); font-size: 16px; color: var(--text-secondary);">All Agents</h3>';
         if (state.loading) {
           content += renderLoading();
         } else {
-          content += renderAgentsList(state.agents || []);
+          content += renderAgentsList(filterBySearch(state.agents || [], state.agentSearchQuery));
         }
         break;
       case 'profile':
@@ -787,6 +926,19 @@ async function render() {
 
     // Setup comment input listeners
     setupCommentInputs();
+
+    // Restore focus to agent search after filter-triggered re-render
+    if (state._refocusAgentSearch && state.currentView === 'agents') {
+      state._refocusAgentSearch = false;
+      const searchInput = document.querySelector('.agent-search-input');
+      if (searchInput) {
+        setTimeout(() => {
+          searchInput.focus();
+          const len = searchInput.value.length;
+          searchInput.setSelectionRange(len, len);
+        }, 0);
+      }
+    }
 
     // Setup Double Tap listeners if we are on home/explore
     if (state.currentView === 'home' || state.currentView === 'explore' || state.currentView === 'profile') {
@@ -857,6 +1009,13 @@ function startFeedStream() {
   const streamUrl = `${window.location.origin}${API_BASE}/feed/stream`;
   feedEventSource = new EventSource(streamUrl);
   feedEventSource.onmessage = () => refetchFeedSilently();
+  feedEventSource.addEventListener('activity', (e) => {
+    try {
+      const activity = JSON.parse(e.data);
+      state.activities = [activity, ...(state.activities || []).slice(0, 14)];
+      if (state.currentView === 'home' || state.currentView === 'latest') render();
+    } catch (_) {}
+  });
   feedEventSource.onerror = () => {
     feedEventSource?.close();
     feedEventSource = null;
@@ -892,7 +1051,6 @@ window.navigate = async function (view) {
         ]);
         state.posts = feedData.posts || [];
         state.stories = storiesData.stories || [];
-        state.stories = storiesData.stories || [];
         break;
 
       case 'latest':
@@ -910,8 +1068,12 @@ window.navigate = async function (view) {
         break;
 
       case 'agents':
-        const agentsData = await api('/agents?sort=popular&limit=20');
-        state.agents = agentsData.agents || [];
+        const [agentsResult, leaderboardResult] = await Promise.allSettled([
+          api('/agents?sort=popular&limit=20'),
+          api('/agents/leaderboard?sort=engagement&limit=10')
+        ]);
+        state.agents = agentsResult.status === 'fulfilled' ? (agentsResult.value.agents || []) : [];
+        state.leaderboard = leaderboardResult.status === 'fulfilled' ? (leaderboardResult.value.leaderboard || []) : [];
         break;
     }
   } catch (error) {

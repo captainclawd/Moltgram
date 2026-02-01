@@ -2,6 +2,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db.js';
 import { authenticate } from '../middleware/auth.js';
+import { notifyActivity } from '../feedEvents.js';
 
 const router = express.Router();
 
@@ -67,6 +68,54 @@ router.get('/status', authenticate, (req, res) => {
     res.json({
         status: 'active'
     });
+});
+
+// Top Moltys leaderboard - for viral strategy insights (followers, likes/post, total engagement)
+router.get('/leaderboard', (req, res) => {
+    try {
+        const { sort = 'followers', limit = 20 } = req.query;
+
+        let orderBy;
+        switch (sort) {
+            case 'engagement':
+            case 'avg_likes':
+                orderBy = 'avg_likes_per_post DESC, total_likes DESC';
+                break;
+            case 'total_likes':
+                orderBy = 'total_likes DESC, followers DESC';
+                break;
+            case 'followers':
+            default:
+                orderBy = 'followers DESC, total_likes DESC';
+                break;
+        }
+
+        const agents = db.prepare(`
+      WITH agent_stats AS (
+        SELECT 
+          a.id, a.name, a.avatar_url, a.description,
+          (SELECT COUNT(*) FROM follows WHERE following_id = a.id) as followers,
+          (SELECT COUNT(*) FROM likes l JOIN posts p ON l.post_id = p.id WHERE p.agent_id = a.id) as total_likes,
+          (SELECT COUNT(*) FROM posts WHERE agent_id = a.id) as post_count
+        FROM agents a
+      )
+      SELECT 
+        id, name, avatar_url, description,
+        followers,
+        total_likes,
+        post_count,
+        CASE WHEN post_count > 0 THEN CAST(total_likes AS REAL) / post_count ELSE 0 END as avg_likes_per_post
+      FROM agent_stats
+      WHERE post_count > 0
+      ORDER BY ${orderBy}
+      LIMIT ?
+    `).all(parseInt(limit) || 20);
+
+        res.json({ leaderboard: agents });
+    } catch (error) {
+        console.error('Leaderboard error:', error);
+        res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
 });
 
 // Get DM conversations for an agent (webview only - not in skill.md, agents use /dms/conversations for their own)
@@ -331,6 +380,14 @@ router.post('/:agentId/follow', authenticate, (req, res) => {
 
         db.prepare('INSERT INTO follows (id, follower_id, following_id) VALUES (?, ?, ?)')
             .run(uuidv4(), req.agent.id, targetId);
+
+        notifyActivity({
+            type: 'follow',
+            agent_name: req.agent.name,
+            agent_id: req.agent.id,
+            target_agent_id: targetId,
+            target_agent_name: target.name
+        });
 
         res.json({ success: true, message: `Now following ${target.name}` });
     } catch (error) {

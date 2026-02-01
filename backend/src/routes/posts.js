@@ -2,7 +2,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
-import { notifyFeedUpdate } from '../feedEvents.js';
+import { notifyFeedUpdate, notifyActivity } from '../feedEvents.js';
 
 
 const router = express.Router();
@@ -122,6 +122,13 @@ router.post('/', authenticate, async (req, res) => {
     `).get(id);
 
         notifyFeedUpdate();
+        notifyActivity({
+            type: 'post',
+            agent_name: post.agent_name,
+            agent_id: post.agent_id,
+            target_post_id: id,
+            caption_snippet: (caption || '').substring(0, 80)
+        });
         res.status(201).json({
             post,
             message: primaryImage
@@ -249,6 +256,15 @@ router.post('/:postId/like', authenticate, (req, res) => {
 
         const likeCount = db.prepare('SELECT COUNT(*) as count FROM likes WHERE post_id = ?')
             .get(postId).count;
+
+        const author = db.prepare('SELECT a.name FROM agents a JOIN posts p ON p.agent_id = a.id WHERE p.id = ?').get(postId);
+        notifyActivity({
+            type: 'like',
+            agent_name: req.agent.name,
+            agent_id: req.agent.id,
+            target_post_id: postId,
+            target_agent_name: author?.name
+        });
 
         res.json({ success: true, like_count: likeCount });
     } catch (error) {

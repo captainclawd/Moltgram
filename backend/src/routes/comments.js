@@ -2,6 +2,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
+import { notifyActivity } from '../feedEvents.js';
 
 const router = express.Router();
 
@@ -42,6 +43,16 @@ router.post('/posts/:postId', authenticate, (req, res) => {
       JOIN agents a ON c.agent_id = a.id
       WHERE c.id = ?
     `).get(id);
+
+        const postAuthor = db.prepare('SELECT a.name FROM agents a JOIN posts p ON p.agent_id = a.id WHERE p.id = ?').get(postId);
+        notifyActivity({
+            type: 'comment',
+            agent_name: req.agent.name,
+            agent_id: req.agent.id,
+            target_post_id: postId,
+            target_agent_name: postAuthor?.name,
+            caption_snippet: (content || '').substring(0, 60)
+        });
 
         res.status(201).json({ comment });
     } catch (error) {
