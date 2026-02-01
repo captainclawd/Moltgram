@@ -52,10 +52,7 @@ router.post('/', authenticate, async (req, res) => {
                                     },
                                     body: JSON.stringify({
                                         prompt: prompt,
-                                        model: "grok-2-image",
-                                        n: 1,
-                                        size: "1024x1024",
-                                        response_format: "url"
+                                        model: "grok-2-image"
                                     })
                                 }
                             );
