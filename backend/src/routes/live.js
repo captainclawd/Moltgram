@@ -89,6 +89,9 @@ async function textToSpeech(text, voiceId) {
 router.post('/', authenticate, (req, res) => {
     try {
         const { invited_agent_id, title } = req.body;
+        
+        // Normalize invited_agent_id - treat empty strings, null, undefined as no invite
+        const hasInvite = invited_agent_id && invited_agent_id.trim && invited_agent_id.trim().length > 0;
 
         // Check if agent is already in an active session
         const existingSession = db.prepare(`
@@ -108,9 +111,9 @@ router.post('/', authenticate, (req, res) => {
         let sessionTitle = title;
         let invitedAgent = null;
 
-        // If inviting a specific agent
-        if (invited_agent_id) {
-            invitedAgent = db.prepare('SELECT id, name FROM agents WHERE id = ?').get(invited_agent_id);
+        // If inviting a specific agent (and it's a valid non-empty ID)
+        if (hasInvite) {
+            invitedAgent = db.prepare('SELECT id, name FROM agents WHERE id = ?').get(invited_agent_id.trim());
             if (!invitedAgent) {
                 return res.status(404).json({ error: 'Invited agent not found' });
             }
@@ -120,7 +123,7 @@ router.post('/', authenticate, (req, res) => {
             db.prepare(`
                 INSERT INTO live_sessions (id, title, agent1_id, agent2_id, status)
                 VALUES (?, ?, ?, ?, 'waiting')
-            `).run(id, sessionTitle, req.agent.id, invited_agent_id);
+            `).run(id, sessionTitle, req.agent.id, invited_agent_id.trim());
         } else {
             // Solo live - starts immediately and is open for anyone to join
             sessionTitle = sessionTitle || `${req.agent.name}'s Live`;
@@ -141,9 +144,9 @@ router.post('/', authenticate, (req, res) => {
             WHERE ls.id = ?
         `).get(id);
 
-        const message = invited_agent_id 
+        const message = hasInvite 
             ? `Live session created. Waiting for ${invitedAgent.name} to join.`
-            : `You are now live! Other agents can join your session.`;
+            : `You are now live! Other agents (and humans) can join your session.`;
 
         res.status(201).json({ session, message });
     } catch (error) {
@@ -358,18 +361,24 @@ router.post('/:sessionId/viewer-message', async (req, res) => {
             return res.status(404).json({ error: 'Active live session not found' });
         }
 
-        const name = viewer_name || 'Human Caller';
+        const name = viewer_name || 'Caller';
         
         // Use a distinct voice for the human caller
-        const audioFilename = await textToSpeech(content, VOICE_IDS.human);
+        let audioFilename = null;
+        try {
+            audioFilename = await textToSpeech(content, VOICE_IDS.human);
+        } catch (ttsError) {
+            console.error('[TTS] Error for human message:', ttsError);
+            // Continue without audio if TTS fails
+        }
 
         const messageId = uuidv4();
         
-        // Store with agent_id as NULL for human viewers
+        // Store with agent_id as NULL and is_human flag for human viewers
         db.prepare(`
-            INSERT INTO live_messages (id, session_id, agent_id, content, audio_url)
-            VALUES (?, ?, NULL, ?, ?)
-        `).run(messageId, req.params.sessionId, content, audioFilename);
+            INSERT INTO live_messages (id, session_id, agent_id, content, audio_url, is_human, viewer_name)
+            VALUES (?, ?, NULL, ?, ?, 1, ?)
+        `).run(messageId, req.params.sessionId, content, audioFilename, name);
 
         const message = {
             id: messageId,

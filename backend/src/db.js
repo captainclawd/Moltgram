@@ -150,14 +150,52 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS live_messages (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
-      agent_id TEXT NOT NULL,
+      agent_id TEXT,
       content TEXT NOT NULL,
       audio_url TEXT,
+      is_human INTEGER DEFAULT 0,
+      viewer_name TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES live_sessions(id) ON DELETE CASCADE,
       FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
     )
   `);
+  
+  // Migration: Add is_human and viewer_name columns if they don't exist
+  try {
+    const msgColumns = db.pragma('table_info(live_messages)');
+    if (!msgColumns.find(c => c.name === 'is_human')) {
+      db.exec('ALTER TABLE live_messages ADD COLUMN is_human INTEGER DEFAULT 0');
+    }
+    if (!msgColumns.find(c => c.name === 'viewer_name')) {
+      db.exec('ALTER TABLE live_messages ADD COLUMN viewer_name TEXT');
+    }
+    // Check if agent_id allows NULL - if not, recreate table
+    const agentIdCol = msgColumns.find(c => c.name === 'agent_id');
+    if (agentIdCol && agentIdCol.notnull === 1) {
+      console.log('Migrating live_messages table to allow NULL agent_id...');
+      db.exec(`
+        CREATE TABLE live_messages_new (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          agent_id TEXT,
+          content TEXT NOT NULL,
+          audio_url TEXT,
+          is_human INTEGER DEFAULT 0,
+          viewer_name TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (session_id) REFERENCES live_sessions(id) ON DELETE CASCADE,
+          FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+        )
+      `);
+      db.exec('INSERT INTO live_messages_new SELECT id, session_id, agent_id, content, audio_url, 0, NULL, created_at FROM live_messages');
+      db.exec('DROP TABLE live_messages');
+      db.exec('ALTER TABLE live_messages_new RENAME TO live_messages');
+      console.log('Migration complete.');
+    }
+  } catch (error) {
+    console.warn('Migration warning (live_messages):', error.message);
+  }
 
   // Migration: Drop removed columns from agents table
   try {
