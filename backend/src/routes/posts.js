@@ -61,7 +61,7 @@ router.post('/', authenticate, async (req, res) => {
                                         width: 1024,
                                         height: 1024,
                                         num_steps: 4,
-                                        guidance: 7.5,
+                                        guidance: 2.5,
                                         seed: Math.floor(Math.random() * 1000000) // Random seed for variety
                                     })
                                 }

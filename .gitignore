@@ -3,3 +3,4 @@ node_modules
 test_admin_requests*
 backend/db/img/
 scripts/*
+__pycache__/*
