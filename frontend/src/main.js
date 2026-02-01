@@ -1639,7 +1639,7 @@ function connectLiveStream(sessionId) {
     state.currentLiveSession = session;
     renderLiveModal();
   });
-  
+
   state.liveEventSource.addEventListener('human_joined', (event) => {
     const data = JSON.parse(event.data);
     console.log('[Live] Human joined:', data);
@@ -1688,7 +1688,7 @@ function playLiveAudio(audioUrl, agentId) {
 
 function processAudioQueue() {
   if (isPlayingAudio || audioQueue.length === 0) return;
-  
+
   // Don't play agent audio while human is speaking (but keep queue)
   if (isMutedWhileSpeaking) {
     console.log('[Audio] Skipping playback - muted while speaking');
@@ -1697,7 +1697,7 @@ function processAudioQueue() {
 
   isPlayingAudio = true;
   const { url, agentId } = audioQueue.shift();
-  
+
   console.log('[Audio] Starting playback:', url);
 
   // Show speaking indicator
@@ -1820,9 +1820,9 @@ function renderLiveModal() {
             <div class="live-avatar-ring ${(isLive || isWaiting) ? 'pulsing' : ''}">
               <div class="live-avatar-large">
                 ${session.agent1_avatar
-                  ? `<img src="${session.agent1_avatar}" alt="${session.agent1_name}">`
-                  : initials1
-                }
+      ? `<img src="${session.agent1_avatar}" alt="${session.agent1_name}">`
+      : initials1
+    }
               </div>
             </div>
             <div class="live-participant-name-large">${session.agent1_name}</div>
@@ -1840,9 +1840,9 @@ function renderLiveModal() {
               <div class="live-avatar-ring ${isLive ? 'pulsing' : ''}">
                 <div class="live-avatar-large">
                   ${session.agent2_avatar
-                    ? `<img src="${session.agent2_avatar}" alt="${session.agent2_name}">`
-                    : initials2
-                  }
+        ? `<img src="${session.agent2_avatar}" alt="${session.agent2_name}">`
+        : initials2
+      }
                 </div>
               </div>
               <div class="live-participant-name-large">${session.agent2_name}</div>
@@ -1898,9 +1898,14 @@ function renderLiveModal() {
         
         ${!isEnded ? `
           <div class="live-call-controls">
-            <button class="call-in-btn" id="call-in-btn" onclick="toggleCallIn()">
+            <button class="call-in-btn" id="call-in-btn" 
+                    onmousedown="startHoldToTalk()" 
+                    onmouseup="stopHoldToTalk()" 
+                    onmouseleave="stopHoldToTalk()"
+                    ontouchstart="startHoldToTalk(); event.preventDefault();" 
+                    ontouchend="stopHoldToTalk()">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-              <span>Call In</span>
+              <span>Hold to Talk</span>
             </button>
           </div>
         ` : ''}
@@ -1919,7 +1924,7 @@ function renderLiveModal() {
 window.closeLiveModal = function () {
   // Stop speech recognition if active
   stopCallIn();
-  
+
   // Close SSE connection
   if (state.liveEventSource) {
     state.liveEventSource.close();
@@ -1948,49 +1953,44 @@ window.closeLiveModal = function () {
   }
 }
 
-// Speech recognition for call-in feature
+// Speech recognition for hold-to-talk feature
 let speechRecognition = null;
 let isCalledIn = false;
-
-window.toggleCallIn = function() {
-  if (isCalledIn) {
-    stopCallIn();
-  } else {
-    startCallIn();
-  }
-}
+let holdToTalkTranscript = '';
 
 // Track if we're muted while speaking
 let isMutedWhileSpeaking = false;
 
-function startCallIn() {
+// Hold to talk - start on press
+window.startHoldToTalk = function () {
+  if (isCalledIn) return; // Already holding
+
   // Check browser support
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     alert('Speech recognition is not supported in your browser. Try Chrome or Edge.');
     return;
   }
-  
+
   speechRecognition = new SpeechRecognition();
   speechRecognition.continuous = true;
   speechRecognition.interimResults = true;
   speechRecognition.lang = 'en-US';
-  
-  let finalTranscript = '';
-  let silenceTimeout = null;
-  
+
+  holdToTalkTranscript = '';
+
   speechRecognition.onstart = () => {
     isCalledIn = true;
     updateCallInUI(true);
-    // Mute agent audio while we're on air
     muteAgentAudio(true);
-    console.log('[CallIn] Speech recognition started - agents muted');
+    console.log('[HoldToTalk] Started - agents muted');
   };
-  
+
   speechRecognition.onresult = (event) => {
+    let finalTranscript = '';
     let interimTranscript = '';
-    
-    for (let i = event.resultIndex; i < event.results.length; i++) {
+
+    for (let i = 0; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript;
       if (event.results[i].isFinal) {
         finalTranscript += transcript;
@@ -1998,74 +1998,76 @@ function startCallIn() {
         interimTranscript += transcript;
       }
     }
-    
-    // Show human as speaking while there's input
+
+    // Accumulate transcript (prefer final, fallback to interim)
+    holdToTalkTranscript = finalTranscript || interimTranscript;
+
+    // Show human as speaking
     const humanSection = document.getElementById('human-caller-section');
     const humanParticipant = humanSection?.querySelector('.live-participant-large');
     if (humanParticipant) {
       humanParticipant.classList.add('speaking');
     }
-    
-    // Clear existing timeout
-    if (silenceTimeout) {
-      clearTimeout(silenceTimeout);
-    }
-    
-    // After silence, send the message
-    silenceTimeout = setTimeout(() => {
-      if (finalTranscript.trim()) {
-        sendHumanMessage(finalTranscript.trim());
-        finalTranscript = '';
-      }
-      // Remove speaking indicator
-      if (humanParticipant) {
-        humanParticipant.classList.remove('speaking');
-      }
-    }, 1500); // 1.5s of silence triggers send
   };
-  
+
   speechRecognition.onerror = (event) => {
-    console.error('[CallIn] Speech recognition error:', event.error);
+    console.error('[HoldToTalk] Error:', event.error);
     if (event.error === 'not-allowed') {
-      alert('Microphone access denied. Please allow microphone access to call in.');
-      stopCallIn();
+      alert('Microphone access denied. Please allow microphone access to talk.');
     }
+    stopHoldToTalk();
   };
-  
+
   speechRecognition.onend = () => {
-    // Restart if we're still called in (browser may stop it)
-    if (isCalledIn) {
-      console.log('[CallIn] Restarting recognition...');
-      setTimeout(() => {
-        if (isCalledIn && speechRecognition) {
-          try {
-            speechRecognition.start();
-          } catch (e) {
-            console.log('[CallIn] Could not restart:', e);
-          }
-        }
-      }, 100);
-    }
+    console.log('[HoldToTalk] Recognition ended');
   };
-  
+
   try {
     speechRecognition.start();
   } catch (e) {
-    console.error('[CallIn] Failed to start:', e);
+    console.error('[HoldToTalk] Failed to start:', e);
     alert('Failed to start speech recognition. Please try again.');
   }
 }
 
-function stopCallIn() {
+// Hold to talk - stop on release and send message
+window.stopHoldToTalk = function () {
+  if (!isCalledIn) return;
+
   isCalledIn = false;
+
   if (speechRecognition) {
     speechRecognition.stop();
     speechRecognition = null;
   }
-  // Unmute agent audio when we hang up
+
+  // Send accumulated transcript
+  if (holdToTalkTranscript.trim()) {
+    sendHumanMessage(holdToTalkTranscript.trim());
+    console.log('[HoldToTalk] Sent:', holdToTalkTranscript);
+  }
+
+  holdToTalkTranscript = '';
+
+  // Unmute agent audio
   muteAgentAudio(false);
   updateCallInUI(false);
-  console.log('[CallIn] Stopped - agents unmuted');
+
+  // Remove speaking indicator
+  const humanSection = document.getElementById('human-caller-section');
+  const humanParticipant = humanSection?.querySelector('.live-participant-large');
+  if (humanParticipant) {
+    humanParticipant.classList.remove('speaking');
+  }
+
+  console.log('[HoldToTalk] Stopped - agents unmuted');
+}
+
+// Legacy function for closing modal
+function stopCallIn() {
+  if (isCalledIn) {
+    stopHoldToTalk();
+  }
 }
 
 // Mute/unmute agent audio playback
@@ -2092,34 +2094,34 @@ function updateCallInUI(isActive) {
   const btn = document.getElementById('call-in-btn');
   const humanSection = document.getElementById('human-caller-section');
   const modal = document.querySelector('.live-modal');
-  
+
   if (btn) {
     if (isActive) {
       btn.classList.add('active');
       btn.innerHTML = `
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-        <span>Hang Up</span>
+        <span>Recording...</span>
       `;
     } else {
       btn.classList.remove('active');
       btn.innerHTML = `
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-        <span>Call In</span>
+        <span>Hold to Talk</span>
       `;
     }
   }
-  
+
   if (humanSection) {
     humanSection.style.display = isActive ? 'block' : 'none';
   }
-  
+
   // Show/hide "on air" banner
   if (modal) {
     const existingBanner = modal.querySelector('.on-air-banner');
     if (isActive && !existingBanner) {
       const banner = document.createElement('div');
       banner.className = 'on-air-banner';
-      banner.innerHTML = '🎙️ YOU ARE ON AIR - Agents muted while you speak';
+      banner.innerHTML = '🎙️ RECORDING - Release to send';
       modal.insertBefore(banner, modal.firstChild);
     } else if (!isActive && existingBanner) {
       existingBanner.remove();
@@ -2129,19 +2131,19 @@ function updateCallInUI(isActive) {
 
 async function sendHumanMessage(content) {
   if (!state.currentLiveSession || !content) return;
-  
+
   console.log('[CallIn] Sending message:', content);
-  
+
   try {
     const response = await fetch(`${API_BASE}/live/${state.currentLiveSession.id}/viewer-message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         content,
         viewer_name: 'Caller'
       })
     });
-    
+
     if (!response.ok) {
       console.error('[CallIn] Failed to send message:', await response.text());
     }
