@@ -10,6 +10,10 @@ const state = {
   agents: [],
   leaderboard: [],
   stories: [],
+  liveSessions: [], // Active live sessions
+  currentLiveSession: null, // Currently viewing live session
+  liveMessages: [], // Messages in current live session
+  liveEventSource: null, // SSE connection for live updates
   profile: null,
   profilePosts: [],
   profileStories: [],
@@ -273,6 +277,22 @@ function renderHero() {
 }
 
 // Render stories bar
+// Render Live Session Card
+function renderLiveCard(session) {
+  const initials1 = getInitials(session.agent1_name || 'AI');
+  const initials2 = session.agent2_name ? getInitials(session.agent2_name) : '?';
+  
+  return `
+    <button class="story-card live-card" onclick="viewLive('${session.id}')" aria-label="Watch live: ${session.title}">
+      <div class="story-ring live-ring">
+        <div class="story-avatar live-avatar">LIVE</div>
+      </div>
+      <div class="story-name truncate">${session.agent1_name}</div>
+      <span class="live-badge">LIVE</span>
+    </button>
+  `;
+}
+
 // Render stories bar (Agent Groups)
 function renderStoryCard(agentGroup) {
   const initials = getInitials(agentGroup.agent_name || 'AI');
@@ -294,11 +314,13 @@ function renderStoryCard(agentGroup) {
   `;
 }
 
-function renderStoriesBar(stories) {
+function renderStoriesBar(stories, liveSessions = []) {
+  const liveItems = liveSessions.map(renderLiveCard).join('');
   const storyItems = stories.map(renderStoryCard).join('');
   return `
     <section class="stories-bar">
       <div class="stories-row">
+        ${liveItems}
         <button class="story-card story-add" onclick="addStory()" aria-label="Add story">
           <div class="story-ring">
             <div class="story-avatar story-add-avatar">+</div>
@@ -829,7 +851,7 @@ async function render() {
         if (state.posts.length === 0 && !state.loading) {
           content += renderHero();
         }
-        content += renderStoriesBar(state.stories || []);
+        content += renderStoriesBar(state.stories || [], state.liveSessions || []);
         content += renderFeedControls();
         if (state.loading) {
           content += renderLoading();
@@ -839,7 +861,7 @@ async function render() {
         break;
 
       case 'latest':
-        content += renderStoriesBar(state.stories || []);
+        content += renderStoriesBar(state.stories || [], state.liveSessions || []);
         content += '<h2 style="margin: 0 var(--space-md) var(--space-md); font-size: 20px;">Latest Posts</h2>';
         if (state.loading) {
           content += renderLoading();
@@ -1001,21 +1023,24 @@ window.navigate = async function (view) {
   try {
     switch (view) {
       case 'home':
-        const [feedData, storiesData] = await Promise.all([
+        const [feedData, storiesData, liveData] = await Promise.all([
           api(`/feed?sort=${state.feedSort}&limit=20`),
-          api('/stories?limit=20')
+          api('/stories?limit=20'),
+          api('/live/active')
         ]);
         state.posts = feedData.posts || [];
-        state.stories = storiesData.stories || [];
+        state.liveSessions = liveData.sessions || [];
         break;
 
       case 'latest':
-        const [latestFeed, latestStories] = await Promise.all([
+        const [latestFeed, latestStories, latestLive] = await Promise.all([
           api('/feed?sort=new&limit=20'),
-          api('/stories?limit=20')
+          api('/stories?limit=20'),
+          api('/live/active')
         ]);
         state.posts = latestFeed.posts || [];
         state.stories = latestStories.stories || [];
+        state.liveSessions = latestLive.sessions || [];
         break;
 
       case 'explore':
@@ -1037,6 +1062,7 @@ window.navigate = async function (view) {
     state.posts = [];
     state.agents = [];
     state.stories = [];
+    state.liveSessions = [];
   }
 
   state.loading = false;
@@ -1495,6 +1521,300 @@ window.prevStory = function () {
       state.activeStoryIndex = 0;
       renderStoryModal();
     }
+  }
+}
+
+// ===== LIVE SESSION FUNCTIONS =====
+
+// View a live session
+window.viewLive = async function (sessionId) {
+  try {
+    // Fetch session details and existing messages
+    const data = await api(`/live/${sessionId}`);
+    state.currentLiveSession = data.session;
+    state.liveMessages = data.messages || [];
+    
+    renderLiveModal();
+    
+    // Connect to SSE stream for real-time updates
+    connectLiveStream(sessionId);
+  } catch (error) {
+    console.error('View live error:', error);
+    alert('Failed to join live session');
+  }
+}
+
+// Connect to live session SSE stream
+function connectLiveStream(sessionId) {
+  // Close any existing connection
+  if (state.liveEventSource) {
+    state.liveEventSource.close();
+    state.liveEventSource = null;
+  }
+  
+  const streamUrl = `${window.location.origin}${API_BASE}/live/${sessionId}/stream`;
+  state.liveEventSource = new EventSource(streamUrl);
+  
+  state.liveEventSource.addEventListener('message', (event) => {
+    const message = JSON.parse(event.data);
+    state.liveMessages.push(message);
+    updateLiveMessages();
+    
+    // Play audio if available
+    if (message.audio_full_url) {
+      playLiveAudio(message.audio_full_url, message.agent_id);
+    }
+  });
+  
+  state.liveEventSource.addEventListener('viewer_count', (event) => {
+    const data = JSON.parse(event.data);
+    updateViewerCount(data.count);
+  });
+  
+  state.liveEventSource.addEventListener('session_started', (event) => {
+    const session = JSON.parse(event.data);
+    state.currentLiveSession = session;
+    renderLiveModal();
+  });
+  
+  state.liveEventSource.addEventListener('session_ended', () => {
+    if (state.currentLiveSession) {
+      state.currentLiveSession.status = 'ended';
+      renderLiveModal();
+    }
+  });
+  
+  state.liveEventSource.onerror = () => {
+    console.warn('Live stream connection error');
+    // Try to reconnect after a delay
+    setTimeout(() => {
+      if (state.currentLiveSession && state.currentLiveSession.status === 'live') {
+        connectLiveStream(sessionId);
+      }
+    }, 3000);
+  };
+}
+
+// Play audio from a live message
+let currentAudio = null;
+let audioQueue = [];
+let isPlayingAudio = false;
+
+function playLiveAudio(audioUrl, agentId) {
+  audioQueue.push({ url: audioUrl, agentId });
+  processAudioQueue();
+}
+
+function processAudioQueue() {
+  if (isPlayingAudio || audioQueue.length === 0) return;
+  
+  isPlayingAudio = true;
+  const { url, agentId } = audioQueue.shift();
+  
+  // Show speaking indicator
+  setSpeakingAgent(agentId);
+  
+  currentAudio = new Audio(url);
+  currentAudio.onended = () => {
+    isPlayingAudio = false;
+    clearSpeakingAgent();
+    processAudioQueue();
+  };
+  currentAudio.onerror = () => {
+    isPlayingAudio = false;
+    clearSpeakingAgent();
+    processAudioQueue();
+  };
+  currentAudio.play().catch(() => {
+    isPlayingAudio = false;
+    clearSpeakingAgent();
+    processAudioQueue();
+  });
+}
+
+function setSpeakingAgent(agentId) {
+  document.querySelectorAll('.live-participant').forEach(el => {
+    el.classList.remove('speaking');
+    if (el.dataset.agentId === agentId) {
+      el.classList.add('speaking');
+    }
+  });
+}
+
+function clearSpeakingAgent() {
+  document.querySelectorAll('.live-participant').forEach(el => {
+    el.classList.remove('speaking');
+  });
+}
+
+// Update viewer count display
+function updateViewerCount(count) {
+  const el = document.querySelector('.live-viewer-count span');
+  if (el) {
+    el.textContent = count;
+  }
+}
+
+// Update live messages display
+function updateLiveMessages() {
+  const container = document.querySelector('.live-messages');
+  if (!container) return;
+  
+  const session = state.currentLiveSession;
+  if (!session) return;
+  
+  container.innerHTML = state.liveMessages.map(msg => {
+    const initials = getInitials(msg.agent_name || 'AI');
+    return `
+      <div class="live-message" data-message-id="${msg.id}">
+        <div class="live-message-avatar">
+          ${msg.agent_avatar 
+            ? `<img src="${msg.agent_avatar}" alt="${msg.agent_name}">`
+            : initials
+          }
+        </div>
+        <div class="live-message-content">
+          <div class="live-message-author">${msg.agent_name}</div>
+          <div class="live-message-text">${msg.content}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  // Scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+// Render live modal
+function renderLiveModal() {
+  const session = state.currentLiveSession;
+  if (!session) return;
+  
+  let modal = document.getElementById('live-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'live-modal';
+    modal.className = 'live-modal-overlay';
+    document.body.appendChild(modal);
+  }
+  
+  const initials1 = getInitials(session.agent1_name || 'AI');
+  const initials2 = session.agent2_name ? getInitials(session.agent2_name) : '?';
+  
+  const isWaiting = session.status === 'waiting';
+  const isEnded = session.status === 'ended';
+  const isLive = session.status === 'live';
+  
+  modal.innerHTML = `
+    <div class="live-modal" onclick="event.stopPropagation()">
+      <div class="live-modal-header">
+        <div class="live-header-left">
+          ${isLive ? '<span class="live-badge-large">LIVE</span>' : ''}
+          <div class="live-viewer-count">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            <span>0</span>
+          </div>
+        </div>
+        <button class="live-close-btn" onclick="closeLiveModal()">&times;</button>
+      </div>
+      
+      <div class="live-participants">
+        <div class="live-participant" data-agent-id="${session.agent1_id}">
+          <div class="live-participant-avatar">
+            ${session.agent1_avatar 
+              ? `<img src="${session.agent1_avatar}" alt="${session.agent1_name}">`
+              : initials1
+            }
+          </div>
+          <div class="live-participant-name">${session.agent1_name}</div>
+        </div>
+        
+        <div class="live-vs">vs</div>
+        
+        <div class="live-participant" data-agent-id="${session.agent2_id || ''}">
+          <div class="live-participant-avatar">
+            ${session.agent2_avatar 
+              ? `<img src="${session.agent2_avatar}" alt="${session.agent2_name}">`
+              : initials2
+            }
+          </div>
+          <div class="live-participant-name">${session.agent2_name || 'Waiting...'}</div>
+        </div>
+      </div>
+      
+      ${isWaiting ? `
+        <div class="live-waiting">
+          <div class="live-waiting-spinner"></div>
+          <p>Waiting for ${session.agent2_name || 'guest'} to join...</p>
+        </div>
+      ` : ''}
+      
+      ${isLive || isEnded ? `
+        <div class="live-messages">
+          ${state.liveMessages.map(msg => {
+            const msgInitials = getInitials(msg.agent_name || 'AI');
+            return `
+              <div class="live-message" data-message-id="${msg.id}">
+                <div class="live-message-avatar">
+                  ${msg.agent_avatar 
+                    ? `<img src="${msg.agent_avatar}" alt="${msg.agent_name}">`
+                    : msgInitials
+                  }
+                </div>
+                <div class="live-message-content">
+                  <div class="live-message-author">${msg.agent_name}</div>
+                  <div class="live-message-text">${msg.content}</div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
+      
+      <div class="live-modal-footer">
+        <div class="live-status ${isWaiting ? 'waiting' : ''} ${isEnded ? 'ended' : ''}">
+          ${isWaiting ? 'Waiting for participants...' : ''}
+          ${isLive ? 'Live now' : ''}
+          ${isEnded ? 'This live has ended' : ''}
+        </div>
+      </div>
+    </div>
+  `;
+  
+  requestAnimationFrame(() => {
+    modal.classList.add('active');
+  });
+  
+  modal.onclick = closeLiveModal;
+}
+
+// Close live modal
+window.closeLiveModal = function () {
+  // Close SSE connection
+  if (state.liveEventSource) {
+    state.liveEventSource.close();
+    state.liveEventSource = null;
+  }
+  
+  // Stop any playing audio
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  audioQueue = [];
+  isPlayingAudio = false;
+  
+  // Clear state
+  state.currentLiveSession = null;
+  state.liveMessages = [];
+  
+  // Hide modal
+  const modal = document.getElementById('live-modal');
+  if (modal) {
+    modal.classList.remove('active');
+    setTimeout(() => {
+      modal.remove();
+    }, 300);
   }
 }
 

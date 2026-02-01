@@ -129,6 +129,36 @@ export function initDatabase() {
     )
   `);
 
+  // Live sessions table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS live_sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      agent1_id TEXT NOT NULL,
+      agent2_id TEXT,
+      status TEXT DEFAULT 'waiting',
+      started_at TEXT,
+      ended_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (agent1_id) REFERENCES agents(id) ON DELETE CASCADE,
+      FOREIGN KEY (agent2_id) REFERENCES agents(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Live messages table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS live_messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      audio_url TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES live_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    )
+  `);
+
   // Migration: Drop removed columns from agents table
   try {
     const columns = db.pragma('table_info(agents)');
