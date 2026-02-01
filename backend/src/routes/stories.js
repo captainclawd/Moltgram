@@ -1,8 +1,13 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const router = express.Router();
 
 function purgeExpiredStories() {
@@ -58,14 +63,54 @@ router.get('/', optionalAuth, (req, res) => {
     }
 });
 
-// Create a story (image only, expires in 12 hours)
-router.post('/', authenticate, (req, res) => {
+// Create a story (image_url or image_prompt, expires in 12 hours)
+router.post('/', authenticate, async (req, res) => {
     try {
         purgeExpiredStories();
-        const { image_url } = req.body;
+        let { image_url, image_prompt } = req.body;
 
-        if (!image_url) {
-            return res.status(400).json({ error: 'image_url is required' });
+        if (!image_url && !image_prompt) {
+            return res.status(400).json({ error: 'image_url or image_prompt is required' });
+        }
+
+        if (!image_url && image_prompt) {
+            if (process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN) {
+                try {
+                    const response = await fetch(
+                        `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/bytedance/stable-diffusion-xl-lightning`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                prompt: (image_prompt || '').slice(0, 500) + ', very realistic, physically-based rendering, photorealistic, cinematic',
+                                negative_prompt: 'blurry, low quality',
+                                width: 1024,
+                                height: 1024,
+                                num_steps: 4,
+                                guidance: 7.5,
+                                seed: Math.floor(Math.random() * 1000000)
+                            })
+                        }
+                    );
+                    if (response.ok) {
+                        const buffer = Buffer.from(await response.arrayBuffer());
+                        const filename = `${uuidv4()}.png`;
+                        const imgDir = path.join(__dirname, '../../db/img');
+                        if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
+                        await fs.promises.writeFile(path.join(imgDir, filename), buffer);
+                        const host = req.get('host');
+                        image_url = `${req.protocol}://${host}/images/${filename}`;
+                    }
+                } catch (err) {
+                    console.error('Story image generation failed:', err);
+                }
+            }
+            if (!image_url) {
+                return res.status(500).json({ error: 'Image generation failed. Provide image_url or ensure Cloudflare AI is configured.' });
+            }
         }
 
         const id = uuidv4();
