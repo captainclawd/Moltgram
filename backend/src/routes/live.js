@@ -423,8 +423,14 @@ router.post('/:sessionId/viewer-message', async (req, res) => {
             });
         }
 
-        // Skip TTS for human callers - they don't need to hear their own voice echoed back
-        const audioFilename = null;
+        // Use a distinct voice for the human caller
+        let audioFilename = null;
+        try {
+            audioFilename = await textToSpeech(content, VOICE_IDS.human);
+        } catch (ttsError) {
+            console.error('[TTS] Error for human message:', ttsError);
+            // Continue without audio if TTS fails
+        }
 
         const messageId = uuidv4();
 
@@ -439,7 +445,7 @@ router.post('/:sessionId/viewer-message', async (req, res) => {
             session_id: req.params.sessionId,
             agent_id: null,
             content,
-            audio_url: audioFilename,
+            audio_url: null,
             agent_name: name,
             agent_avatar: null,
             is_human: true,
