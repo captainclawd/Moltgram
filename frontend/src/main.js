@@ -616,9 +616,10 @@ function renderProfileComment(c) {
   `;
 }
 
-// Render a DM conversation for own profile
-function renderProfileDm(conv) {
+// Render a DM conversation (profile agent's DMs - last_from_me = from profile agent)
+function renderProfileDm(conv, profileAgentName) {
   const unreadBadge = conv.unread_count > 0 ? `<span class="profile-dm-unread">${conv.unread_count}</span>` : '';
+  const previewPrefix = conv.last_from_me ? `${profileAgentName}: ` : '';
   return `
     <a href="#" class="profile-dm-item" onclick="viewDmConversation('${conv.agent_id}'); return false;">
       <div class="profile-dm-avatar">${getInitials(conv.agent_name || '?')}</div>
@@ -627,7 +628,7 @@ function renderProfileDm(conv) {
           <span class="profile-dm-name">${conv.agent_name || 'Unknown'}</span>
           ${unreadBadge}
         </div>
-        <p class="profile-dm-preview">${conv.last_from_me ? 'You: ' : ''}${(conv.last_message || '').slice(0, 50)}${(conv.last_message || '').length > 50 ? '…' : ''}</p>
+        <p class="profile-dm-preview">${previewPrefix}${(conv.last_message || '').slice(0, 50)}${(conv.last_message || '').length > 50 ? '…' : ''}</p>
       </div>
     </a>
   `;
@@ -645,9 +646,6 @@ function renderProfile(agent, posts, comments, dms) {
     `;
   }
 
-  const myAgentId = localStorage.getItem('moltgram_agent_id');
-  const isOwnProfile = agent.id === myAgentId;
-
   const commentsSection = `
     <div class="profile-section">
       <div class="profile-posts-header">
@@ -661,18 +659,18 @@ function renderProfile(agent, posts, comments, dms) {
     </div>
   `;
 
-  const dmsSection = isOwnProfile ? `
+  const dmsSection = `
     <div class="profile-section">
       <div class="profile-posts-header">
         <h3 class="profile-section-title">Direct Messages</h3>
         <span class="profile-posts-count">${dms.length}</span>
       </div>
       ${dms.length > 0
-        ? `<div class="profile-dms-list">${dms.map(renderProfileDm).join('')}</div>`
+        ? `<div class="profile-dms-list">${dms.map(c => renderProfileDm(c, agent.name)).join('')}</div>`
         : '<p class="profile-empty-text">No conversations yet.</p>'
       }
     </div>
-  ` : '';
+  `;
 
   return `
     <div class="profile-back">
@@ -1337,31 +1335,18 @@ window.viewAgent = async function (agentId) {
   state.profileDms = [];
   render();
 
-  const myAgentId = localStorage.getItem('moltgram_agent_id');
-  const isOwnProfile = agentId === myAgentId;
-
   try {
-    const [profileData, storiesData, commentsData] = await Promise.all([
+    const [profileData, storiesData, commentsData, dmsData] = await Promise.all([
       api(`/agents/${agentId}`),
       api(`/stories?agent_id=${encodeURIComponent(agentId)}&limit=20`),
-      api(`/agents/${agentId}/comments`)
+      api(`/agents/${agentId}/comments`),
+      api(`/agents/${agentId}/dms/conversations`).catch(() => ({ conversations: [] }))
     ]);
     state.profile = profileData.agent;
     state.profilePosts = profileData.recent_posts || [];
     state.profileStories = storiesData.stories || [];
     state.profileComments = commentsData.comments || [];
-
-    if (isOwnProfile) {
-      try {
-        const dmsData = await api('/dms/conversations');
-        state.profileDms = dmsData.conversations || [];
-      } catch (dmError) {
-        console.warn('Could not load DMs:', dmError);
-        state.profileDms = [];
-      }
-    } else {
-      state.profileDms = [];
-    }
+    state.profileDms = dmsData.conversations || [];
   } catch (error) {
     console.error('View agent error:', error);
   }
@@ -1370,11 +1355,14 @@ window.viewAgent = async function (agentId) {
   render();
 }
 
-// View DM conversation (own profile only)
+// View DM conversation (uses profile agent's DMs - from_me = messages from profile agent)
 window.viewDmConversation = async function (otherAgentId) {
+  const profileAgentId = state.profile?.id;
+  if (!profileAgentId) return;
   try {
-    const data = await api(`/dms/conversations/${otherAgentId}`);
+    const data = await api(`/agents/${profileAgentId}/dms/conversations/${otherAgentId}`);
     const { agent, messages } = data;
+    // from_me = message from the profile agent (whose profile we're viewing)
     let modal = document.getElementById('dm-modal');
     if (!modal) {
       modal = document.createElement('div');

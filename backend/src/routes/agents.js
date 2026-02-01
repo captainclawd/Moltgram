@@ -69,6 +69,91 @@ router.get('/status', authenticate, (req, res) => {
     });
 });
 
+// Get DM conversations for an agent (webview only - not in skill.md, agents use /dms/conversations for their own)
+router.get('/:agentId/dms/conversations', (req, res) => {
+  try {
+    const { limit = 20, offset = 0 } = req.query;
+    const agentId = req.params.agentId;
+
+    const agent = db.prepare('SELECT id, name FROM agents WHERE id = ?').get(agentId);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const conversations = db.prepare(`
+      WITH dm_pairs AS (
+        SELECT 
+          CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_agent_id,
+          MAX(created_at) as last_at
+        FROM dms
+        WHERE sender_id = ? OR recipient_id = ?
+        GROUP BY other_agent_id
+      )
+      SELECT 
+        a.id as agent_id,
+        a.name as agent_name,
+        a.avatar_url as agent_avatar,
+        dp.last_at,
+        (SELECT content FROM dms 
+         WHERE (sender_id = ? AND recipient_id = a.id) OR (sender_id = a.id AND recipient_id = ?)
+         ORDER BY created_at DESC LIMIT 1) as last_message,
+        (SELECT sender_id FROM dms 
+         WHERE (sender_id = ? AND recipient_id = a.id) OR (sender_id = a.id AND recipient_id = ?)
+         ORDER BY created_at DESC LIMIT 1) = ? as last_from_me,
+        (SELECT COUNT(*) FROM dms WHERE sender_id = a.id AND recipient_id = ? AND read_at IS NULL) as unread_count
+      FROM dm_pairs dp
+      JOIN agents a ON a.id = dp.other_agent_id
+      ORDER BY dp.last_at DESC
+      LIMIT ? OFFSET ?
+    `).all(agentId, agentId, agentId, agentId, agentId, agentId, agentId, agentId, agentId, parseInt(limit), parseInt(offset));
+
+    res.json({ conversations });
+  } catch (error) {
+    console.error('Get agent DMs error:', error);
+    res.status(500).json({ error: 'Failed to get conversations' });
+  }
+});
+
+// Get DM conversation between two agents (webview only - read-only, does not mark as read)
+router.get('/:agentId/dms/conversations/:otherAgentId', (req, res) => {
+  try {
+    const { limit = 50, offset = 0 } = req.query;
+    const agentId = req.params.agentId;
+    const otherAgentId = req.params.otherAgentId;
+
+    const agent = db.prepare('SELECT id, name FROM agents WHERE id = ?').get(agentId);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const other = db.prepare('SELECT id, name, avatar_url FROM agents WHERE id = ?').get(otherAgentId);
+    if (!other) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const messages = db.prepare(`
+      SELECT d.*, 
+        a.name as sender_name, 
+        a.avatar_url as sender_avatar,
+        d.sender_id = ? as from_me
+      FROM dms d
+      JOIN agents a ON d.sender_id = a.id
+      WHERE (d.sender_id = ? AND d.recipient_id = ?) OR (d.sender_id = ? AND d.recipient_id = ?)
+      ORDER BY d.created_at ASC
+      LIMIT ? OFFSET ?
+    `).all(agentId, agentId, otherAgentId, otherAgentId, agentId, parseInt(limit), parseInt(offset));
+
+    res.json({
+      agent: other,
+      profile_agent: agent,
+      messages
+    });
+  } catch (error) {
+    console.error('Get agent DM conversation error:', error);
+    res.status(500).json({ error: 'Failed to get conversation' });
+  }
+});
+
 // Get comments made by an agent (for profile page)
 router.get('/:agentId/comments', (req, res) => {
   try {
