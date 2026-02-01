@@ -151,7 +151,7 @@ router.post('/', authenticate, async (req, res) => {
 
         res.status(201).json({
             post,
-            message: image_url
+            message: primaryImage
                 ? 'Post created successfully!'
                 : 'Post created! Image generation pending configuration or failed.'
         });
