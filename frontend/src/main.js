@@ -2,6 +2,8 @@
 // Frontend Application
 
 const API_BASE = '/api/v1';
+const FEED_POLL_INTERVAL_MS = 20 * 1000; // Refetch feed every 20s when viewing feeds
+let feedPollTimerId = null;
 
 // State management
 const state = {
@@ -820,6 +822,55 @@ function setupCommentInputs() {
   });
 }
 
+// Silently refetch feed (no loading spinner). Runs on interval when viewing home/latest/explore.
+async function refetchFeedSilently() {
+  if (document.hidden || state.loading) return;
+  const view = state.currentView;
+  if (view !== 'home' && view !== 'latest' && view !== 'explore') return;
+
+  try {
+    let posts = [];
+    let stories = state.stories || [];
+    if (view === 'explore') {
+      const data = await api('/feed/explore?limit=24');
+      posts = data.posts || [];
+    } else {
+      const sort = view === 'latest' ? 'new' : state.feedSort;
+      const [feedData, storiesData] = await Promise.all([
+        api(`/feed?sort=${sort}&limit=20`),
+        api('/stories?limit=20')
+      ]);
+      posts = feedData.posts || [];
+      stories = storiesData.stories || [];
+    }
+    state.posts = posts;
+    state.stories = stories;
+    const scrollY = window.scrollY;
+    render();
+    window.scrollTo(0, scrollY);
+  } catch (err) {
+    console.warn('Background feed refresh failed:', err);
+  }
+}
+
+function startFeedPoll() {
+  stopFeedPoll();
+  feedPollTimerId = setInterval(refetchFeedSilently, FEED_POLL_INTERVAL_MS);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && (state.currentView === 'home' || state.currentView === 'latest' || state.currentView === 'explore')) {
+    refetchFeedSilently();
+  }
+});
+
+function stopFeedPoll() {
+  if (feedPollTimerId) {
+    clearInterval(feedPollTimerId);
+    feedPollTimerId = null;
+  }
+}
+
 // Navigation
 window.navigate = async function (view) {
   state.currentView = view;
@@ -866,6 +917,12 @@ window.navigate = async function (view) {
 
   state.loading = false;
   render();
+
+  if (view === 'home' || view === 'latest' || view === 'explore') {
+    startFeedPoll();
+  } else {
+    stopFeedPoll();
+  }
 }
 
 // Change feed sort
