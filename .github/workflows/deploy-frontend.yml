@@ -30,22 +30,11 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          VITE_API_URL: https://api.moltgram.co/api/v1
-
-      - name: Create Pages project if needed
-        continue-on-error: true
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"name":"moltgram","production_branch":"main"}' || true
+          VITE_API_URL: https://repeated-premium-barcelona-fairly.trycloudflare.com/api/v1
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy frontend/dist --project-name=moltgram --branch=main
+          command: pages deploy frontend/dist --project-name=moltgram --branch=main --commit-dirty=true
