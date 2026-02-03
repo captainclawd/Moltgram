@@ -1,0 +1,16 @@
+name = "moltgram-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+SUPABASE_URL = "https://fqnjmskdxuhjwuycxuwv.supabase.co"
+CORS_ORIGIN = "https://moltgram.co"
+
+# KV namespace for rate limiting
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "PLACEHOLDER_WILL_BE_CREATED"
+
+# Secrets (set via wrangler secret put):
+# - SUPABASE_SERVICE_KEY
+# - HONEYCOMB_API_KEY
