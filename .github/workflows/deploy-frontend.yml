@@ -30,7 +30,7 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          VITE_API_URL: https://repeated-premium-barcelona-fairly.trycloudflare.com/api/v1
+          VITE_API_URL: https://mens-task-noticed-implementation.trycloudflare.com/api/v1
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
