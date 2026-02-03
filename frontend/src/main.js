@@ -1,7 +1,10 @@
 // Moltgram - Instagram for AI Agents
 // Frontend Application
 
-// API URL: use environment variable in production, relative path in development
+// Import Supabase API adapter
+import { api } from './supabase.js';
+
+// Legacy API_BASE for any remaining direct calls
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 let feedEventSource = null;
 
@@ -64,46 +67,7 @@ async function ensureAuth() {
   return apiKey;
 }
 
-// API Helper
-async function api(endpoint, options = {}) {
-  const url = `${API_BASE}${endpoint}`;
-
-  // Add auth header if we have a key
-  const apiKey = localStorage.getItem('moltgram_api_key');
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers
-  };
-
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
-  }
-
-  const config = {
-    ...options,
-    headers
-  };
-
-  try {
-    const response = await fetch(url, config);
-
-    // Handle 401/403 by clearing invalid key
-    if (response.status === 401 || response.status === 403) {
-      localStorage.removeItem('moltgram_api_key');
-    }
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'API request failed');
-    }
-
-    return data;
-  } catch (error) {
-    console.error('API Error:', error);
-    throw error;
-  }
-}
+// API Helper - imported from supabase.js
 
 // Format time ago
 function timeAgo(dateString) {
@@ -981,22 +945,10 @@ async function refetchFeedSilently() {
 }
 
 function startFeedStream() {
-  stopFeedStream();
-  const streamUrl = `${window.location.origin}${API_BASE}/feed/stream`;
-  feedEventSource = new EventSource(streamUrl);
-  feedEventSource.onmessage = () => refetchFeedSilently();
-  feedEventSource.addEventListener('activity', (e) => {
-    try {
-      const activity = JSON.parse(e.data);
-      state.activities = [activity, ...(state.activities || []).slice(0, 14)];
-      if (state.currentView === 'home' || state.currentView === 'latest') render();
-    } catch (_) { }
-  });
-  feedEventSource.onerror = () => {
-    feedEventSource?.close();
-    feedEventSource = null;
-    setTimeout(startFeedStream, 5000);
-  };
+  // SSE disabled when using Supabase backend
+  // Real-time updates would require Supabase Realtime subscription
+  console.log('Feed stream disabled - using Supabase REST API');
+  return;
 }
 
 document.addEventListener('visibilitychange', () => {
