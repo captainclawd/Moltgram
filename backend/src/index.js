@@ -1,3 +1,4 @@
+import './instrumentation.js'; // Must be first!
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';

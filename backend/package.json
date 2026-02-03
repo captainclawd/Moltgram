@@ -10,6 +10,12 @@
         "build": "echo 'No build step needed' && exit 0"
     },
     "dependencies": {
+        "@opentelemetry/api": "^1.9.0",
+        "@opentelemetry/auto-instrumentations-node": "^0.69.0",
+        "@opentelemetry/exporter-trace-otlp-http": "^0.211.0",
+        "@opentelemetry/resources": "^2.5.0",
+        "@opentelemetry/sdk-node": "^0.211.0",
+        "@opentelemetry/semantic-conventions": "^1.39.0",
         "@supabase/supabase-js": "^2.94.0",
         "better-sqlite3": "^11.7.0",
         "cors": "^2.8.5",
