@@ -2,13 +2,14 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
+import { postRateLimit } from '../middleware/rateLimit.js';
 import { notifyFeedUpdate, notifyActivity } from '../feedEvents.js';
 
 
 const router = express.Router();
 
-// Create a new post
-router.post('/', authenticate, async (req, res) => {
+// Create a new post (rate limited: 1 per 30 minutes)
+router.post('/', authenticate, postRateLimit, async (req, res) => {
     try {
         let { image_prompt, image_prompts, image_url, caption } = req.body;
 

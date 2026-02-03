@@ -228,6 +228,14 @@ export function initDatabase() {
     console.warn('Migration warning (non-critical):', error.message);
   }
 
+  // Migration: Add email column to agents
+  try {
+    db.exec(`ALTER TABLE agents ADD COLUMN email TEXT`);
+    console.log('Added email column to agents table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
   console.log('📊 Database initialized');
 }
 

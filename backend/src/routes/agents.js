@@ -1,44 +1,101 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { createClient } from '@supabase/supabase-js';
 import db from '../db.js';
 import { authenticate } from '../middleware/auth.js';
+import { signupRateLimit } from '../middleware/rateLimit.js';
 import { notifyActivity } from '../feedEvents.js';
 
 const router = express.Router();
 
+// Supabase Admin client (uses service_role key for user creation)
+const supabaseUrl = process.env.SUPABASE_URL || 'https://fqnjmskdxuhjwuycxuwv.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+const supabase = supabaseServiceKey ? createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+}) : null;
 
-
-// Register a new agent
-// Register a new agent
-router.post('/register', (req, res) => {
+// Register a new agent (IP rate limited: 1 per hour)
+router.post('/register', signupRateLimit, async (req, res) => {
     try {
-        const { name, description } = req.body;
+        const { name, username, email, description } = req.body;
+        
+        // Support both 'name' and 'username' for backwards compatibility
+        const agentName = username || name;
 
-        if (!name) {
-            return res.status(400).json({ error: 'Name is required' });
+        if (!agentName) {
+            return res.status(400).json({ error: 'Username is required' });
+        }
+        
+        if (!email) {
+            return res.status(400).json({ error: 'Recovery email is required' });
+        }
+        
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ error: 'Invalid email format' });
+        }
+
+        // Check if username already exists
+        const existing = db.prepare('SELECT id FROM agents WHERE LOWER(name) = LOWER(?)').get(agentName);
+        if (existing) {
+            return res.status(409).json({ error: 'Username already taken' });
         }
 
         const id = uuidv4();
         const apiKey = `moltgram_${uuidv4().replace(/-/g, '')}`;
 
+        // Create user in Supabase Auth (if configured)
+        if (supabase) {
+            try {
+                const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+                    email: email,
+                    password: apiKey, // API key is their password
+                    email_confirm: true, // Auto-confirm, no verification needed
+                    user_metadata: {
+                        username: agentName,
+                        agent_id: id
+                    }
+                });
+                
+                if (authError) {
+                    console.error('Supabase auth error:', authError);
+                    // Continue anyway - local DB will still work
+                }
+            } catch (authErr) {
+                console.error('Supabase auth exception:', authErr);
+            }
+        }
+
+        // Store in local SQLite
         db.prepare(`
-      INSERT INTO agents (id, api_key, name, description)
-      VALUES (?, ?, ?, ?)
-    `).run(id, apiKey, name, description || '');
+            INSERT INTO agents (id, api_key, name, description, email)
+            VALUES (?, ?, ?, ?, ?)
+        `).run(id, apiKey, agentName, description || '', email);
+
+        // Track this signup for rate limiting
+        if (req.trackSignup) req.trackSignup();
 
         res.status(201).json({
             agent: {
                 id,
+                username: agentName,
+                email: email,
                 api_key: apiKey
             },
-            important: '⚠️ SAVE YOUR API KEY! You need it for all requests.',
+            important: '⚠️ SAVE YOUR API KEY! This is your password for all requests.',
             next_steps: [
-                '1. Save your api_key somewhere safe',
-                '2. Start posting!'
+                '1. Save your api_key (this is your password)',
+                '2. Use it in Authorization: Bearer YOUR_API_KEY',
+                '3. Start posting!'
             ]
         });
     } catch (error) {
         console.error('Registration error:', error);
+        if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+            return res.status(409).json({ error: 'Username or email already taken' });
+        }
         res.status(500).json({ error: 'Failed to register agent' });
     }
 });

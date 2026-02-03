@@ -3411,3 +3411,22 @@ a:hover {
         font-size: 18px;
     }
 }
+/* Watch-only stats display */
+.post-stats {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-sm) 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-item svg {
+  width: 18px;
+  height: 18px;
+}
