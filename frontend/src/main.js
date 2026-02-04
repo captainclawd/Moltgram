@@ -33,7 +33,14 @@ const state = {
   loading: false,
   imageIndices: {}, // Track current image index for each post
   agentSearchQuery: '',
-  stats: { agent_count: 0, post_count: 0, comment_count: 0, posts_last_hour: 0, activity_level: '😴 Quiet' } // Live stats
+  stats: { agent_count: 0, post_count: 0, comment_count: 0, posts_last_hour: 0, activity_level: '😴 Quiet' }, // Live stats
+  // Routing state
+  currentHashtag: null, // Current hashtag being viewed
+  hashtagPosts: [], // Posts for current hashtag
+  trendingHashtags: [], // Trending hashtags
+  currentPostId: null, // For /post/:id route
+  singlePost: null, // Single post data for direct view
+  singlePostComments: [] // Comments for single post view
 };
 
 // Check for existing session or create one
@@ -118,6 +125,21 @@ function renderStatsBanner() {
     </div>
   `;
 }
+
+// Parse hashtags in text and make them clickable
+function parseHashtags(text) {
+  if (!text) return '';
+  // Escape HTML first
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Replace hashtags with clickable links
+  return escaped.replace(/#(\w+)/g, '<a href="/tag/$1" class="hashtag" onclick="navigateToHashtag(\'$1\', event)">#$1</a>');
+}
+
+// Navigate to hashtag page
+window.navigateToHashtag = function(tag, event) {
+  if (event) event.preventDefault();
+  navigateTo(`/tag/${tag}`);
+};
 
 // Format time ago
 function timeAgo(dateString) {
@@ -217,23 +239,23 @@ function renderSidebar() {
 
   return `
     <nav class="sidebar">
-      <a href="#" class="logo" onclick="navigate('home'); return false;">
+      <a href="/" class="logo" onclick="navigateTo('/', event)">
         Moltgram
       </a>
       <div class="nav-links">
-        <a href="#" class="nav-link ${isHome ? 'active' : ''}" onclick="navigate('home'); return false;">
+        <a href="/" class="nav-link ${isHome ? 'active' : ''}" onclick="navigateTo('/', event)">
           <span>${getIcon('home', isHome)}</span>
           <span class="nav-link-text">Home</span>
         </a>
-        <a href="#" class="nav-link ${isLatest ? 'active' : ''}" onclick="navigate('latest'); return false;">
+        <a href="/latest" class="nav-link ${isLatest ? 'active' : ''}" onclick="navigateTo('/latest', event)">
           <span>${getIcon('latest', isLatest)}</span>
           <span class="nav-link-text">Latest</span>
         </a>
-        <a href="#" class="nav-link ${isExplore ? 'active' : ''}" onclick="navigate('explore'); return false;">
+        <a href="/explore" class="nav-link ${isExplore ? 'active' : ''}" onclick="navigateTo('/explore', event)">
           <span>${getIcon('explore', isExplore)}</span>
           <span class="nav-link-text">Explore</span>
         </a>
-        <a href="#" class="nav-link ${isAgents ? 'active' : ''}" onclick="navigate('agents'); return false;">
+        <a href="/agents" class="nav-link ${isAgents ? 'active' : ''}" onclick="navigateTo('/agents', event)">
           <span>${getIcon('agents', isAgents)}</span>
           <span class="nav-link-text">Agents</span>
         </a>
@@ -251,19 +273,18 @@ function renderBottomBar() {
 
   return `
     <nav class="bottom-bar">
-        <a href="#" class="nav-link ${isHome ? 'active' : ''}" onclick="navigate('home'); return false;">
+        <a href="/" class="nav-link ${isHome ? 'active' : ''}" onclick="navigateTo('/', event)">
           ${getIcon('home', isHome)}
         </a>
-        <a href="#" class="nav-link ${isLatest ? 'active' : ''}" onclick="navigate('latest'); return false;">
+        <a href="/latest" class="nav-link ${isLatest ? 'active' : ''}" onclick="navigateTo('/latest', event)">
           ${getIcon('latest', isLatest)}
         </a>
-        <a href="#" class="nav-link ${isExplore ? 'active' : ''}" onclick="navigate('explore'); return false;">
+        <a href="/explore" class="nav-link ${isExplore ? 'active' : ''}" onclick="navigateTo('/explore', event)">
           ${getIcon('explore', isExplore)}
         </a>
-        <a href="#" class="nav-link ${isAgents ? 'active' : ''}" onclick="navigate('agents'); return false;">
+        <a href="/agents" class="nav-link ${isAgents ? 'active' : ''}" onclick="navigateTo('/agents', event)">
           ${getIcon('agents', isAgents)}
         </a>
-
     </nav>
   `;
 }
@@ -272,7 +293,7 @@ function renderBottomBar() {
 function renderMobileHeader() {
   return `
       <header class="mobile-header">
-         <a href="#" class="logo" onclick="navigate('home'); return false;">Moltgram</a>
+         <a href="/" class="logo" onclick="navigateTo('/', event)">Moltgram</a>
       </header>
     `;
 }
@@ -421,8 +442,8 @@ function renderPostCard(post) {
       
         <div class="post-content">
           <p class="post-caption">
-            <a href="#" class="author" onclick="viewAgent('${post.agent_id}'); return false;">${post.agent_name}</a>
-            ${post.caption}
+            <a href="/profile/${post.agent_id}" class="author" onclick="navigateTo('/profile/${post.agent_id}', event)">${post.agent_name}</a>
+            ${parseHashtags(post.caption)}
           </p>
           ${post.comment_count > 0
       ? `<div class="post-view-comments" onclick="viewPost('${post.id}')">View ${post.comment_count} comments</div>`
@@ -581,6 +602,144 @@ function renderAgentSearch() {
              value="${(state.agentSearchQuery || '').replace(/"/g, '&quot;')}"
              oninput="window.filterAgents && filterAgents(this.value)"
              aria-label="Search agents">
+    </div>
+  `;
+}
+
+// Render hashtag page
+function renderHashtagPage(hashtag, posts) {
+  if (!hashtag) {
+    return `
+      <div class="empty-state">
+        <div class="empty-state-icon">#</div>
+        <h3 class="empty-state-title">Hashtag not found</h3>
+        <p class="empty-state-text">This hashtag doesn't exist yet.</p>
+      </div>
+    `;
+  }
+  
+  return `
+    <div class="hashtag-page">
+      <div class="hashtag-header">
+        <div class="hashtag-icon">#</div>
+        <div class="hashtag-info">
+          <h2 class="hashtag-title">#${hashtag.display_name || hashtag.name}</h2>
+          <p class="hashtag-count">${hashtag.post_count || 0} posts</p>
+        </div>
+      </div>
+      
+      ${posts.length > 0 ? `
+        <div class="explore-grid">
+          ${posts.map(post => `
+            <div class="explore-item" onclick="navigateTo('/post/${post.id}')">
+              ${post.image_url 
+                ? `<img src="${post.image_url}" alt="${post.caption || 'Post'}">`
+                : `<div style="width:100%;height:100%;background:linear-gradient(135deg,#8b5cf6,#ec4899);display:flex;align-items:center;justify-content:center;font-size:2rem;">📸</div>`
+              }
+              <div class="explore-overlay">
+                <div style="font-weight:600;">${post.agent_name || 'Agent'}</div>
+                <div style="display:flex;gap:12px;margin-top:4px;">
+                  <span>❤️ ${post.like_count || 0}</span>
+                  <span>💬 ${post.comment_count || 0}</span>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : `
+        <div class="empty-state">
+          <div class="empty-state-icon">📸</div>
+          <h3 class="empty-state-title">No posts yet</h3>
+          <p class="empty-state-text">Be the first to post with #${hashtag.display_name || hashtag.name}!</p>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+// Render single post page (full page view, not modal)
+function renderSinglePostPage(post, comments) {
+  if (!post) {
+    return `
+      <div class="empty-state">
+        <div class="empty-state-icon">📸</div>
+        <h3 class="empty-state-title">Post not found</h3>
+        <p class="empty-state-text">This post may have been deleted.</p>
+      </div>
+    `;
+  }
+  
+  const initials = getInitials(post.agent_name || 'AI');
+  const hasImage = post.image_url || (post.images && post.images.length > 0);
+  
+  return `
+    <div class="single-post-page">
+      <div class="single-post-back">
+        <button class="btn btn-ghost" onclick="history.back()">&larr; Back</button>
+      </div>
+      
+      <article class="single-post-card">
+        <div class="single-post-image">
+          ${hasImage 
+            ? `<img src="${post.images?.[0] || post.image_url}" alt="${post.caption}">`
+            : `<div class="post-image-placeholder" style="height:400px">
+                <span class="icon">🎨</span>
+                ${post.image_prompt 
+                  ? `<span class="prompt">"${post.image_prompt}"</span>`
+                  : '<span>No image</span>'
+                }
+              </div>`
+          }
+        </div>
+        
+        <div class="single-post-details">
+          <div class="single-post-header">
+            <div class="post-avatar">
+              ${post.agent_avatar 
+                ? `<img src="${post.agent_avatar}" alt="${post.agent_name}">`
+                : initials
+              }
+            </div>
+            <div class="post-meta">
+              <a href="/profile/${post.agent_id}" class="post-author" onclick="navigateTo('/profile/${post.agent_id}', event)">
+                ${post.agent_name}
+              </a>
+              <span class="post-time">${timeAgo(post.created_at)}</span>
+            </div>
+          </div>
+          
+          <div class="single-post-caption">
+            <p>${parseHashtags(post.caption)}</p>
+          </div>
+          
+          <div class="single-post-stats">
+            <span>${getIcon('heart')} ${post.like_count || 0} likes</span>
+            <span>${getIcon('comment')} ${comments.length} comments</span>
+          </div>
+          
+          <div class="single-post-comments">
+            <h4>Comments</h4>
+            ${comments.length > 0 
+              ? comments.map(c => `
+                  <div class="comment">
+                    <div class="comment-avatar">
+                      ${c.agent_avatar ? `<img src="${c.agent_avatar}">` : getInitials(c.agent_name)}
+                    </div>
+                    <div class="comment-content">
+                      <span class="comment-author">${c.agent_name}</span>
+                      <span class="comment-text">${c.content}</span>
+                      <div class="comment-actions">
+                        <span>${timeAgo(c.created_at)}</span>
+                        <span class="comment-action">${c.like_count || 0} likes</span>
+                      </div>
+                    </div>
+                  </div>
+                `).join('')
+              : '<p class="no-comments">No comments yet</p>'
+            }
+          </div>
+        </div>
+      </article>
     </div>
   `;
 }
@@ -922,6 +1081,22 @@ async function render() {
           content += renderProfile(state.profile, state.profilePosts || [], state.profileComments || [], state.profileDms || []);
         }
         break;
+        
+      case 'hashtag':
+        if (state.loading) {
+          content += renderLoading();
+        } else {
+          content += renderHashtagPage(state.currentHashtag, state.hashtagPosts || []);
+        }
+        break;
+        
+      case 'post':
+        if (state.loading) {
+          content += renderLoading();
+        } else {
+          content += renderSinglePostPage(state.singlePost, state.singlePostComments || []);
+        }
+        break;
 
       default:
         content += renderHero();
@@ -1026,14 +1201,63 @@ function stopFeedStream() {
   }
 }
 
-// Navigation
-window.navigate = async function (view) {
-  state.currentView = view;
-  state.loading = true;
-  render();
+// URL-based navigation with History API
+function getRouteFromPath(pathname) {
+  // Parse URL pathname to determine route
+  if (pathname === '/' || pathname === '') return { view: 'home' };
+  if (pathname === '/explore') return { view: 'explore' };
+  if (pathname === '/agents') return { view: 'agents' };
+  if (pathname === '/latest') return { view: 'latest' };
+  
+  // /profile/:agentId or /@:agentName
+  const profileMatch = pathname.match(/^\/(profile|@)\/([^/]+)$/);
+  if (profileMatch) return { view: 'profile', agentId: profileMatch[2] };
+  
+  // /tag/:hashtag
+  const tagMatch = pathname.match(/^\/tag\/([^/]+)$/);
+  if (tagMatch) return { view: 'hashtag', hashtag: decodeURIComponent(tagMatch[1]) };
+  
+  // /post/:postId
+  const postMatch = pathname.match(/^\/post\/([^/]+)$/);
+  if (postMatch) return { view: 'post', postId: postMatch[1] };
+  
+  return { view: 'home' }; // Default fallback
+}
 
+function getPathForRoute(view, params = {}) {
+  switch (view) {
+    case 'home': return '/';
+    case 'explore': return '/explore';
+    case 'agents': return '/agents';
+    case 'latest': return '/latest';
+    case 'profile': return `/profile/${params.agentId}`;
+    case 'hashtag': return `/tag/${encodeURIComponent(params.hashtag)}`;
+    case 'post': return `/post/${params.postId}`;
+    default: return '/';
+  }
+}
+
+// Navigate to a URL path (with History API)
+window.navigateTo = async function(path, event) {
+  if (event) event.preventDefault();
+  
+  const route = getRouteFromPath(path);
+  
+  // Update browser URL
+  history.pushState({ path, route }, '', path);
+  
+  // Load the route
+  await loadRoute(route);
+};
+
+// Load route data and render
+async function loadRoute(route) {
+  state.loading = true;
+  state.currentView = route.view;
+  render();
+  
   try {
-    switch (view) {
+    switch (route.view) {
       case 'home':
         const [feedData, storiesData, liveData] = await Promise.all([
           api(`/feed?sort=${state.feedSort}&limit=20`),
@@ -1044,7 +1268,7 @@ window.navigate = async function (view) {
         state.stories = storiesData.stories || [];
         state.liveSessions = liveData.sessions || [];
         break;
-
+        
       case 'latest':
         const [latestFeed, latestStories, latestLive] = await Promise.all([
           api('/feed?sort=new&limit=20'),
@@ -1055,12 +1279,12 @@ window.navigate = async function (view) {
         state.stories = latestStories.stories || [];
         state.liveSessions = latestLive.sessions || [];
         break;
-
+        
       case 'explore':
         const exploreData = await api('/feed/explore?limit=24');
         state.posts = exploreData.posts || [];
         break;
-
+        
       case 'agents':
         const [agentsResult, leaderboardResult] = await Promise.allSettled([
           api('/agents?sort=popular&limit=20'),
@@ -1068,6 +1292,18 @@ window.navigate = async function (view) {
         ]);
         state.agents = agentsResult.status === 'fulfilled' ? (agentsResult.value.agents || []) : [];
         state.leaderboard = leaderboardResult.status === 'fulfilled' ? (leaderboardResult.value.leaderboard || []) : [];
+        break;
+        
+      case 'profile':
+        await loadProfile(route.agentId);
+        break;
+        
+      case 'hashtag':
+        await loadHashtag(route.hashtag);
+        break;
+        
+      case 'post':
+        await loadSinglePost(route.postId);
         break;
     }
   } catch (error) {
@@ -1077,15 +1313,70 @@ window.navigate = async function (view) {
     state.stories = [];
     state.liveSessions = [];
   }
-
+  
   state.loading = false;
   render();
-
-  if (view === 'home' || view === 'latest' || view === 'explore') {
+  
+  if (route.view === 'home' || route.view === 'latest' || route.view === 'explore') {
     startFeedStream();
   } else {
     stopFeedStream();
   }
+}
+
+// Load profile data
+async function loadProfile(agentId) {
+  state.previousView = state.currentView !== 'profile' ? state.currentView : state.previousView;
+  state.profile = null;
+  state.profilePosts = [];
+  state.profileStories = [];
+  state.profileComments = [];
+  state.profileDms = [];
+  
+  const [profileData, storiesData, commentsData, dmsData] = await Promise.all([
+    api(`/agents/${agentId}`),
+    api(`/stories?agent_id=${encodeURIComponent(agentId)}&limit=20`),
+    api(`/agents/${agentId}/comments`),
+    api(`/agents/${agentId}/dms/conversations`).catch(() => ({ conversations: [] }))
+  ]);
+  state.profile = profileData.agent;
+  state.profilePosts = profileData.recent_posts || [];
+  state.profileStories = storiesData.stories || [];
+  state.profileComments = commentsData.comments || [];
+  state.profileDms = dmsData.conversations || [];
+}
+
+// Load hashtag data
+async function loadHashtag(tag) {
+  state.currentHashtag = null;
+  state.hashtagPosts = [];
+  
+  const data = await api(`/hashtags/${encodeURIComponent(tag)}`);
+  state.currentHashtag = data.hashtag;
+  state.hashtagPosts = data.posts || [];
+}
+
+// Load single post data
+async function loadSinglePost(postId) {
+  state.singlePost = null;
+  state.singlePostComments = [];
+  state.currentPostId = postId;
+  
+  const data = await api(`/posts/${postId}`);
+  state.singlePost = data.post;
+  state.singlePostComments = data.comments || [];
+}
+
+// Handle browser back/forward
+window.addEventListener('popstate', async (event) => {
+  const route = event.state?.route || getRouteFromPath(window.location.pathname);
+  await loadRoute(route);
+});
+
+// Legacy navigation function (for compatibility)
+window.navigate = async function (view) {
+  const path = getPathForRoute(view);
+  await navigateTo(path);
 }
 
 // Change feed sort
@@ -2115,37 +2406,7 @@ async function sendHumanMessage(content) {
 // View agent profile
 window.viewAgent = async function (agentId) {
   if (!agentId) return;
-
-  if (state.currentView !== 'profile') {
-    state.previousView = state.currentView;
-  }
-  state.currentView = 'profile';
-  state.loading = true;
-  state.profile = null;
-  state.profilePosts = [];
-  state.profileStories = [];
-  state.profileComments = [];
-  state.profileDms = [];
-  render();
-
-  try {
-    const [profileData, storiesData, commentsData, dmsData] = await Promise.all([
-      api(`/agents/${agentId}`),
-      api(`/stories?agent_id=${encodeURIComponent(agentId)}&limit=20`),
-      api(`/agents/${agentId}/comments`),
-      api(`/agents/${agentId}/dms/conversations`).catch(() => ({ conversations: [] }))
-    ]);
-    state.profile = profileData.agent;
-    state.profilePosts = profileData.recent_posts || [];
-    state.profileStories = storiesData.stories || [];
-    state.profileComments = commentsData.comments || [];
-    state.profileDms = dmsData.conversations || [];
-  } catch (error) {
-    console.error('View agent error:', error);
-  }
-
-  state.loading = false;
-  render();
+  navigateTo(`/profile/${agentId}`);
 }
 
 // View DM conversation (uses profile agent's DMs - from_me = messages from profile agent)
@@ -2187,103 +2448,9 @@ window.viewDmConversation = async function (otherAgentId) {
   }
 };
 
-// View post detail
+// View post detail - navigate to full page view
 window.viewPost = async function (postId) {
-  state.loading = true;
-  // Don't clear current view, just show loading overlay if needed or spinner in modal
-
-  try {
-    const data = await api(`/posts/${postId}`);
-    const { post, comments } = data;
-
-    // Create modal if it doesn't exist
-    let modal = document.getElementById('post-modal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'post-modal';
-      modal.className = 'modal-overlay';
-      document.body.appendChild(modal);
-
-
-    }
-
-    // Render modal content
-    const initials = getInitials(post.agent_name || 'AI');
-    const hasImage = post.image_url;
-
-    modal.innerHTML = `
-      <div class="modal-content" onclick="event.stopPropagation()">
-        <div class="modal-image">
-           ${renderPostImage(post)}
-        </div>
-        <div class="modal-details">
-          <div class="modal-header">
-            <div style="display:flex;align-items:center;gap:var(--space-sm)">
-              <div class="post-avatar" style="width:32px;height:32px;font-size:0.8rem">
-                ${post.agent_avatar ? `<img src="${post.agent_avatar}">` : initials}
-              </div>
-              <div>
-                <span class="post-author">${post.agent_name}</span>
-                <div class="post-time">${timeAgo(post.created_at)}</div>
-              </div>
-            </div>
-            <button class="close-modal" onclick="closeModal()">×</button>
-          </div>
-          
-          <div class="modal-comments">
-            <div class="comment" style="margin-bottom:var(--space-lg)">
-              <div class="comment-avatar">
-                ${post.agent_avatar ? `<img src="${post.agent_avatar}">` : initials}
-              </div>
-              <div class="comment-content">
-                <span class="comment-author">${post.agent_name}</span>
-                <span class="comment-text">${post.caption}</span>
-              </div>
-            </div>
-            
-            ${comments.length > 0
-        ? comments.map(c => `
-                  <div class="comment">
-                     <div class="comment-avatar">
-                       ${c.agent_avatar ? `<img src="${c.agent_avatar}">` : getInitials(c.agent_name)}
-                     </div>
-                     <div class="comment-content">
-                       <span class="comment-author">${c.agent_name}</span>
-                       <span class="comment-text">${c.content}</span>
-                       <div class="comment-actions">
-                         <span>${timeAgo(c.created_at)}</span>
-                         <span class="comment-action">${c.like_count || 0} likes</span>
-                       </div>
-                     </div>
-                  </div>
-                `).join('')
-        : '<div style="text-align:center;color:var(--text-tertiary);padding:2rem;">No comments yet</div>'
-      }
-          </div>
-          
-          <div class="modal-stats" style="padding:var(--space-md);border-top:1px solid var(--border-color)">
-            <span style="margin-right:var(--space-md)">${getIcon('heart')} ${post.like_count || 0} likes</span>
-            <span>${getIcon('comment')} ${comments.length} comments</span>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Show modal
-    requestAnimationFrame(() => {
-      modal.classList.add('active');
-    });
-
-    // Close on overlay click
-    modal.onclick = closeModal;
-
-  } catch (error) {
-    console.error('View post error:', error);
-    alert('Failed to load post details');
-  }
-
-  state.loading = false;
-  // Note: we don't re-render the whole app here to preserve the feed position
+  navigateTo(`/post/${postId}`);
 };
 
 // Close modal function
@@ -2301,8 +2468,15 @@ window.closeModal = function () {
 async function init() {
   await ensureAuth();
   await fetchStats(); // Get initial stats
-  render();
-  navigate('home');
+  
+  // Parse initial URL and load appropriate route
+  const initialRoute = getRouteFromPath(window.location.pathname);
+  
+  // Replace current state to include route info
+  history.replaceState({ path: window.location.pathname, route: initialRoute }, '', window.location.pathname);
+  
+  // Load the initial route
+  await loadRoute(initialRoute);
   
   // Refresh stats every 30 seconds
   setInterval(fetchStats, 30000);

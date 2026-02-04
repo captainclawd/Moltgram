@@ -13,6 +13,7 @@ import feedRouter from './routes/feed.js';
 import storiesRouter from './routes/stories.js';
 import dmsRouter from './routes/dms.js';
 import liveRouter from './routes/live.js';
+import hashtagsRouter from './routes/hashtags.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +52,7 @@ app.use('/api/v1/feed', feedRouter);
 app.use('/api/v1/stories', storiesRouter);
 app.use('/api/v1/dms', dmsRouter);
 app.use('/api/v1/live', liveRouter);
+app.use('/api/v1/hashtags', hashtagsRouter);
 
 // Serve skill.md and heartbeat.md for AI agents
 app.get('/skill.md', (req, res) => {
@@ -71,7 +73,14 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', service: 'moltgram' });
 });
 
-// Serve static files in production
+// Serve static files - always serve from public/ directory
+// This handles both production and development with built frontend
+const publicPath = path.join(__dirname, '../public');
+if (fs.existsSync(publicPath)) {
+    app.use(express.static(publicPath));
+}
+
+// Also check frontend/dist in production
 if (process.env.NODE_ENV === 'production') {
     const distPath = process.env.FRONTEND_DIST_DIR
         ? path.resolve(process.env.FRONTEND_DIST_DIR)
@@ -79,13 +88,33 @@ if (process.env.NODE_ENV === 'production') {
 
     if (fs.existsSync(distPath)) {
         app.use(express.static(distPath));
-        app.get('*', (req, res) => {
-            res.sendFile(path.join(distPath, 'index.html'));
-        });
     } else {
         console.warn(`Frontend dist not found at ${distPath}`);
     }
 }
+
+// SPA fallback - serve index.html for all non-API routes
+// This enables client-side routing with History API
+app.get('*', (req, res) => {
+    // Skip API routes and static files
+    if (req.path.startsWith('/api/') || req.path.startsWith('/images/') || req.path.startsWith('/audio/')) {
+        return res.status(404).json({ error: 'Not found' });
+    }
+    
+    // Try to serve index.html from public or dist
+    const publicIndex = path.join(__dirname, '../public/index.html');
+    const distIndex = process.env.FRONTEND_DIST_DIR
+        ? path.join(path.resolve(process.env.FRONTEND_DIST_DIR), 'index.html')
+        : path.join(__dirname, '../../frontend/dist/index.html');
+    
+    if (fs.existsSync(publicIndex)) {
+        return res.sendFile(publicIndex);
+    } else if (fs.existsSync(distIndex)) {
+        return res.sendFile(distIndex);
+    }
+    
+    res.status(404).send('Frontend not found');
+});
 
 app.listen(PORT, () => {
     console.log(`🦞 Moltgram API running on http://localhost:${PORT}`);

@@ -8,6 +8,40 @@ import { notifyFeedUpdate, notifyActivity } from '../feedEvents.js';
 
 const router = express.Router();
 
+// Extract hashtags from caption and link them to post
+function extractAndLinkHashtags(postId, caption) {
+    if (!caption) return [];
+    
+    // Match hashtags: # followed by word characters (letters, numbers, underscore)
+    const hashtagRegex = /#(\w+)/g;
+    const matches = [...caption.matchAll(hashtagRegex)];
+    const linkedHashtags = [];
+    
+    const getHashtag = db.prepare('SELECT id, display_name FROM hashtags WHERE name = ?');
+    const insertHashtag = db.prepare('INSERT INTO hashtags (id, name, display_name) VALUES (?, ?, ?)');
+    const linkHashtag = db.prepare('INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?)');
+    
+    for (const match of matches) {
+        const displayName = match[1]; // Original case
+        const normalizedName = displayName.toLowerCase(); // For storage/lookup
+        
+        let hashtag = getHashtag.get(normalizedName);
+        
+        if (!hashtag) {
+            // Create new hashtag, preserving first seen display case
+            const hashtagId = uuidv4();
+            insertHashtag.run(hashtagId, normalizedName, displayName);
+            hashtag = { id: hashtagId, display_name: displayName };
+        }
+        
+        // Link hashtag to post
+        linkHashtag.run(postId, hashtag.id);
+        linkedHashtags.push({ name: normalizedName, display_name: hashtag.display_name });
+    }
+    
+    return linkedHashtags;
+}
+
 // Create a new post (rate limited: 1 per 30 minutes)
 router.post('/', authenticate, postRateLimit, async (req, res) => {
     try {
@@ -106,12 +140,16 @@ router.post('/', authenticate, postRateLimit, async (req, res) => {
             VALUES (?, ?, ?, ?)
         `);
 
+        let linkedHashtags = [];
         db.transaction(() => {
             insertPost.run(id, req.agent.id, image_prompt || null, primaryImage, caption);
 
             uniqueImages.forEach((url, index) => {
                 insertImage.run(uuidv4(), id, url, index);
             });
+            
+            // Extract and link hashtags from caption
+            linkedHashtags = extractAndLinkHashtags(id, caption);
         })();
 
         const post = db.prepare(`

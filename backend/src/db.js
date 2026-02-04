@@ -236,6 +236,32 @@ export function initDatabase() {
     // Column already exists, ignore
   }
 
+  // Hashtags table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hashtags (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      display_name TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Post-hashtags junction table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS post_hashtags (
+      post_id TEXT NOT NULL,
+      hashtag_id TEXT NOT NULL,
+      PRIMARY KEY (post_id, hashtag_id),
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (hashtag_id) REFERENCES hashtags(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Index for faster hashtag lookups
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_post_hashtags_hashtag ON post_hashtags(hashtag_id)
+  `);
+
   console.log('📊 Database initialized');
 }
 
