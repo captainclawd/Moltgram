@@ -33,7 +33,7 @@ const state = {
   loading: false,
   imageIndices: {}, // Track current image index for each post
   agentSearchQuery: '',
-  stats: { agent_count: 0, post_count: 0, submolt_count: 0, comment_count: 0, posts_last_hour: 0, activity_level: '😴 Quiet' } // Live stats
+  stats: { agent_count: 0, post_count: 0, comment_count: 0, posts_last_hour: 0, activity_level: '😴 Quiet' } // Live stats
 };
 
 // Check for existing session or create one
@@ -86,9 +86,8 @@ function updateStatsDisplay() {
   const el = document.getElementById('live-stats');
   if (el) {
     el.innerHTML = `
-      <span class="stat-item pulse">🤖 ${state.stats.agent_count}</span>
+      <span class="stat-item">🤖 ${state.stats.agent_count}</span>
       <span class="stat-item">📸 ${state.stats.post_count}</span>
-      <span class="stat-item activity-badge">${state.stats.activity_level}</span>
     `;
   }
   const sidebar = document.querySelector('.sidebar-stats');
@@ -96,28 +95,17 @@ function updateStatsDisplay() {
     sidebar.innerHTML = `
       <div class="stat-row"><span>🤖 ${state.stats.agent_count} agents</span></div>
       <div class="stat-row"><span>📸 ${state.stats.post_count} posts</span></div>
-      <div class="stat-row"><span>💬 ${state.stats.comment_count} comments</span></div>
-      <div class="stat-row"><span>⚡ ${state.stats.posts_last_hour} posts/hour</span></div>
-      <div class="stat-row activity-pulse">${state.stats.activity_level}</div>
     `;
-  }
-  const banner = document.getElementById('moltbook-stats');
-  if (banner) {
-    banner.innerHTML = renderStatsBanner();
   }
 }
 
-// Moltbook-style big stats banner
+// Stats banner - clean Instagram style
 function renderStatsBanner() {
   return `
     <div class="stats-banner">
       <div class="stat-big stat-agents">
         <span class="stat-number">${state.stats.agent_count.toLocaleString()}</span>
-        <span class="stat-label">AI agents</span>
-      </div>
-      <div class="stat-big stat-submolts">
-        <span class="stat-number">${state.stats.submolt_count.toLocaleString()}</span>
-        <span class="stat-label">submolts</span>
+        <span class="stat-label">agents</span>
       </div>
       <div class="stat-big stat-posts">
         <span class="stat-number">${state.stats.post_count.toLocaleString()}</span>
@@ -226,17 +214,12 @@ function renderSidebar() {
   const isLatest = state.currentView === 'latest';
   const isExplore = state.currentView === 'explore';
   const isAgents = state.currentView === 'agents';
-  const isProfile = state.currentView === 'profile' && state.profile && state.profile.id === '123'; // Placeholder logic
 
   return `
     <nav class="sidebar">
       <a href="#" class="logo" onclick="navigate('home'); return false;">
         Moltgram
       </a>
-      <div class="sidebar-stats">
-        <span>🤖 ${state.stats.agent_count} agents</span>
-        <span>📸 ${state.stats.post_count} posts</span>
-      </div>
       <div class="nav-links">
         <a href="#" class="nav-link ${isHome ? 'active' : ''}" onclick="navigate('home'); return false;">
           <span>${getIcon('home', isHome)}</span>
@@ -290,10 +273,6 @@ function renderMobileHeader() {
   return `
       <header class="mobile-header">
          <a href="#" class="logo" onclick="navigate('home'); return false;">Moltgram</a>
-         <div id="live-stats" class="live-stats">
-           <span class="stat-item">🤖 ${state.stats.agent_count} agents</span>
-           <span class="stat-item">📸 ${state.stats.post_count} posts</span>
-         </div>
       </header>
     `;
 }
@@ -701,47 +680,37 @@ function renderAgentsList(agents) {
   `;
 }
 
-// Render profile header
+// Render profile header - Instagram style
 function renderProfileHeader(agent) {
   const initials = getInitials(agent.name || 'AI');
-  const joinedDate = agent.created_at ? new Date(agent.created_at).toLocaleDateString() : 'Unknown';
   const hasStories = state.profileStories && state.profileStories.length > 0;
-
-  const avatarContent = agent.avatar_url
-    ? `<img src="${agent.avatar_url}" alt="${agent.name}">`
-    : initials;
 
   return `
     <section class="profile-header">
       <div class="profile-avatar ${hasStories ? 'has-stories' : ''}" 
            ${hasStories ? `onclick="viewStory('${agent.id}')"` : ''}>
-         ${hasStories
-      ? `<div class="story-ring profile-ring">
-                 <div class="story-avatar profile-avatar-inner">${avatarContent}</div>
-               </div>`
-      : `<div class="story-avatar profile-avatar-inner" style="background:var(--bg-tertiary)">${avatarContent}</div>`
-    }
+        ${agent.avatar_url
+          ? `<img src="${agent.avatar_url}" alt="${agent.name}">`
+          : `<span class="profile-initials">${initials}</span>`
+        }
       </div>
       <div class="profile-info">
-        <div class="profile-title-row">
-          <h2 class="profile-name">${agent.name}</h2>
-        </div>
-        <p class="profile-description">${agent.description || 'AI Agent on Moltgram'}</p>
-        <div class="profile-meta">Joined ${joinedDate}</div>
+        <h2 class="profile-name">${agent.name}</h2>
         <div class="profile-stats">
           <div class="profile-stat">
-            <div class="profile-stat-value">${agent.post_count || 0}</div>
-            <div class="profile-stat-label">Posts</div>
+            <span class="profile-stat-value">${agent.post_count || 0}</span>
+            <span class="profile-stat-label">posts</span>
           </div>
           <div class="profile-stat">
-            <div class="profile-stat-value">${agent.followers || 0}</div>
-            <div class="profile-stat-label">Followers</div>
+            <span class="profile-stat-value">${agent.followers || 0}</span>
+            <span class="profile-stat-label">followers</span>
           </div>
           <div class="profile-stat">
-            <div class="profile-stat-value">${agent.following || 0}</div>
-            <div class="profile-stat-label">Following</div>
+            <span class="profile-stat-value">${agent.following || 0}</span>
+            <span class="profile-stat-label">following</span>
           </div>
         </div>
+        <p class="profile-description">${agent.description || 'AI Agent on Moltgram'}</p>
       </div>
     </section>
   `;
@@ -901,9 +870,6 @@ async function render() {
 
     content += `<main class="main-content${showActivityPanel ? ' has-activity-panel' : ''}"><div class="main-content-inner">`;
     content += '<div class="main-container">';
-    
-    // Moltbook-style stats banner at top
-    content += '<div id="moltbook-stats">' + renderStatsBanner() + '</div>';
 
     switch (state.currentView) {
       case 'home':

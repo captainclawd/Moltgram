@@ -872,50 +872,49 @@ a:hover {
 }
 
 /* ================================
-   Live Activity Feed Panel (Desktop: rectangle in right side, hidden on mobile)
-   Sits right next to main content with small gap
+   Live Activity Feed Panel - Compact sidebar widget
    ================================ */
 .activity-feed-panel {
-    flex: 0 0 320px;
-    width: 320px;
-    background: var(--bg-card);
+    flex: 0 0 280px;
+    width: 280px;
+    background: transparent;
     border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
     padding: var(--space-md);
     display: none;
-    /* Hidden on mobile */
     flex-direction: column;
     position: sticky;
-    top: var(--space-md);
+    top: var(--space-lg);
+    max-height: 200px;
 }
 
 .activity-feed-panel .activity-feed-list {
     overflow-y: auto;
-    max-height: 480px;
+    max-height: 120px;
     min-height: 0;
 }
 
 .activity-feed-panel .activity-feed-empty-text {
     font-size: var(--font-size-sm);
     color: var(--text-tertiary);
-    padding: var(--space-sm) 0;
+    padding: var(--space-xs) 0;
 }
 
-/* Desktop: show panel as rectangle next to content */
-@media (min-width: 769px) {
+/* Desktop: show panel only on larger screens */
+@media (min-width: 1100px) {
     .activity-feed-panel {
         display: flex;
     }
 }
 
-/* Mobile: hide panel entirely, main content full width */
-@media (max-width: 768px) {
+/* Hide on smaller screens */
+@media (max-width: 1099px) {
     .activity-feed-panel {
         display: none !important;
     }
-
+    
     .main-content-inner {
-        width: 100%;
+        justify-content: center;
     }
 }
 
@@ -1571,91 +1570,91 @@ a:hover {
 }
 
 .profile-header {
-    display: grid;
-    grid-template-columns: 160px 1fr;
-    gap: 24px;
-    padding: var(--space-lg);
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-    align-items: center;
-    /* Center vertically */
+    display: flex;
+    gap: 32px;
+    padding: var(--space-xl) 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    align-items: flex-start;
+    border-bottom: 1px solid var(--border-light);
+    margin-bottom: var(--space-lg);
 }
 
 .profile-info {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    /* Ensure text container uses available space */
     min-width: 0;
+    flex: 1;
 }
 
 .profile-avatar {
-    width: 120px;
-    height: 120px;
+    width: 150px;
+    height: 150px;
     border-radius: var(--radius-full);
-    background: var(--accent-gradient);
+    background: var(--bg-tertiary);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--font-size-3xl);
+    font-size: 48px;
     font-weight: 700;
-    color: white;
+    color: var(--text-primary);
     overflow: hidden;
     margin: 0;
+    flex-shrink: 0;
 }
 
 .profile-avatar img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: var(--radius-full);
 }
 
-.profile-title-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    margin-bottom: var(--space-xs);
+.profile-initials {
+    font-size: 48px;
+    font-weight: 600;
+    color: var(--text-secondary);
 }
 
 .profile-name {
-    font-size: var(--font-size-2xl);
+    font-size: 20px;
+    font-weight: 400;
+    margin-bottom: var(--space-md);
 }
 
 .profile-description {
-    margin-bottom: var(--space-sm);
-}
-
-.profile-meta {
-    color: var(--text-tertiary);
-    font-size: var(--font-size-sm);
-    margin-bottom: var(--space-md);
+    font-size: var(--font-size-base);
+    color: var(--text-primary);
+    margin-top: var(--space-md);
+    line-height: 1.4;
 }
 
 .profile-stats {
     display: flex;
-    gap: var(--space-md);
+    gap: var(--space-xl);
+    margin-top: var(--space-md);
 }
 
 .profile-stat {
-    text-align: center;
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
 }
 
 .profile-stat-value {
     font-size: var(--font-size-lg);
     font-weight: 700;
     color: var(--text-primary);
-    line-height: 1.2;
-    margin-bottom: 2px;
 }
 
 .profile-stat-label {
-    font-size: var(--font-size-xs);
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    line-height: 1.2;
+    font-size: var(--font-size-base);
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0;
 }
 
 .profile-content {
@@ -2011,40 +2010,39 @@ a:hover {
 }
 
 .profile-posts-grid {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xl);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
 }
 
 .profile-post-card {
     position: relative;
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    aspect-ratio: 1;
     overflow: hidden;
-    /* Feed-like style for profile posts */
-    width: 100%;
-    aspect-ratio: auto;
-    /* Let content define it */
-    cursor: default;
-    display: block;
-    border: none;
-    background: transparent;
-    box-shadow: none;
+    cursor: pointer;
+    background: var(--bg-tertiary);
 }
 
 .profile-post-card img {
     width: 100%;
-    height: auto;
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-sm);
+    height: 100%;
+    object-fit: cover;
     display: block;
+    transition: opacity 0.2s;
 }
 
-.profile-post-card:hover {
-    transform: none;
-    box-shadow: none;
-    border-color: transparent;
+.profile-post-card:hover img {
+    opacity: 0.7;
+}
+
+.profile-post-card:hover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* ================================
@@ -3595,41 +3593,30 @@ a:hover {
   font-weight: 700;
 }
 
-/* Moltbook-style stats banner */
+/* Stats banner - minimal */
 .stats-banner {
-  display: flex;
-  justify-content: center;
-  gap: 40px;
-  padding: 24px 20px;
-  margin-bottom: 24px;
-  background: rgba(0,0,0,0.3);
-  border-radius: 12px;
-  flex-wrap: wrap;
+  display: none; /* Hide the top stats banner - too cluttered */
 }
 
 .stat-big {
   text-align: center;
-  min-width: 80px;
+  min-width: 60px;
 }
 
 .stat-number {
   display: block;
-  font-size: 2rem;
-  font-weight: 700;
+  font-size: 1.25rem;
+  font-weight: 600;
   line-height: 1.2;
+  color: var(--text-primary);
 }
 
 .stat-label {
   display: block;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
   text-transform: lowercase;
 }
-
-.stat-agents .stat-number { color: #ef4444; }
-.stat-submolts .stat-number { color: #14b8a6; }
-.stat-posts .stat-number { color: #f59e0b; }
-.stat-comments .stat-number { color: #ec4899; }
 
 /* Reddit-style post cards */
 .post-card-reddit {
