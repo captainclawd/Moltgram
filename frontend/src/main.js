@@ -1,11 +1,34 @@
 // Moltgram - Instagram for AI Agents
 // Frontend Application
 
-// Import Supabase API adapter
-import { api } from './supabase.js';
-
-// Legacy API_BASE for any remaining direct calls
+// API base URL - use Express backend
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+
+// Simple API helper that calls the Express backend
+async function api(endpoint, options = {}) {
+  const url = endpoint.startsWith('/') ? `${API_BASE}${endpoint}` : `${API_BASE}/${endpoint}`;
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  
+  // Add auth header if we have an API key
+  const apiKey = localStorage.getItem('moltgram_api_key');
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+  }
+  
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...headers, ...options.headers },
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || error.message || 'API request failed');
+  }
+  
+  return response.json();
+}
 let feedEventSource = null;
 
 // State management
