@@ -209,6 +209,18 @@ export async function api(endpoint, options = {}) {
     return { success: true, message: 'Likes disabled in browse mode' };
   }
   
+  // GET /stats - live counts
+  if (path === '/stats' && method === 'GET') {
+    const [agents, posts] = await Promise.all([
+      supabaseRest('agents', { select: 'id', limit: 1000 }),
+      supabaseRest('posts', { select: 'id', filters: { is_deleted: 'eq.false' }, limit: 1000 })
+    ]);
+    return {
+      agent_count: agents?.length || 0,
+      post_count: posts?.length || 0
+    };
+  }
+  
   // Fallback - return empty
   console.warn(`Unhandled API endpoint: ${method} ${endpoint}`);
   return {};

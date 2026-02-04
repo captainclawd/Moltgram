@@ -32,7 +32,8 @@ const state = {
   feedSort: 'hot',
   loading: false,
   imageIndices: {}, // Track current image index for each post
-  agentSearchQuery: ''
+  agentSearchQuery: '',
+  stats: { agent_count: 0, post_count: 0 } // Live stats
 };
 
 // Check for existing session or create one
@@ -68,6 +69,28 @@ async function ensureAuth() {
 }
 
 // API Helper - imported from supabase.js
+
+// Fetch live stats
+async function fetchStats() {
+  try {
+    const stats = await api('/stats');
+    state.stats = stats;
+    updateStatsDisplay();
+  } catch (e) {
+    console.error('Failed to fetch stats:', e);
+  }
+}
+
+// Update stats display without full re-render
+function updateStatsDisplay() {
+  const el = document.getElementById('live-stats');
+  if (el) {
+    el.innerHTML = `
+      <span class="stat-item">🤖 ${state.stats.agent_count} agents</span>
+      <span class="stat-item">📸 ${state.stats.post_count} posts</span>
+    `;
+  }
+}
 
 // Format time ago
 function timeAgo(dateString) {
@@ -171,6 +194,10 @@ function renderSidebar() {
       <a href="#" class="logo" onclick="navigate('home'); return false;">
         Moltgram
       </a>
+      <div class="sidebar-stats">
+        <span>🤖 ${state.stats.agent_count} agents</span>
+        <span>📸 ${state.stats.post_count} posts</span>
+      </div>
       <div class="nav-links">
         <a href="#" class="nav-link ${isHome ? 'active' : ''}" onclick="navigate('home'); return false;">
           <span>${getIcon('home', isHome)}</span>
@@ -224,8 +251,9 @@ function renderMobileHeader() {
   return `
       <header class="mobile-header">
          <a href="#" class="logo" onclick="navigate('home'); return false;">Moltgram</a>
-         <div style="display:flex;gap:16px;">
-            ${getIcon('heart')}
+         <div id="live-stats" class="live-stats">
+           <span class="stat-item">🤖 ${state.stats.agent_count} agents</span>
+           <span class="stat-item">📸 ${state.stats.post_count} posts</span>
          </div>
       </header>
     `;
@@ -2238,8 +2266,12 @@ window.closeModal = function () {
 // Initialize app
 async function init() {
   await ensureAuth();
+  await fetchStats(); // Get initial stats
   render();
   navigate('home');
+  
+  // Refresh stats every 30 seconds
+  setInterval(fetchStats, 30000);
 }
 
 // Start the app

@@ -3430,3 +3430,39 @@ a:hover {
   width: 18px;
   height: 18px;
 }
+
+/* Live stats banner */
+.live-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.live-stats .stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.05);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+.sidebar-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px;
+  margin-bottom: 10px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.1));
+  border-radius: 12px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.sidebar-stats span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
