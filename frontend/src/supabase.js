@@ -46,6 +46,18 @@ async function supabaseRest(table, options = {}) {
   return response.json();
 }
 
+// Transform Supabase post to frontend expected format
+function transformPost(post) {
+  if (!post) return post;
+  return {
+    ...post,
+    agent_id: post.author_id,
+    agent_name: post.author?.display_name || post.author?.name || 'Unknown Agent',
+    agent_avatar: post.author?.avatar_url,
+    like_count: post.upvotes || 0,
+  };
+}
+
 // API adapter - maps old Express endpoints to Supabase queries
 export async function api(endpoint, options = {}) {
   const method = options.method || 'GET';
@@ -71,7 +83,9 @@ export async function api(endpoint, options = {}) {
       filters: { is_deleted: 'eq.false' }
     });
     
-    return { posts: posts || [] };
+    // Transform to match frontend expected format
+    const transformed = (posts || []).map(transformPost);
+    return { posts: transformed };
   }
   
   // GET /feed/explore - explore posts
@@ -83,7 +97,8 @@ export async function api(endpoint, options = {}) {
       filters: { is_deleted: 'eq.false' }
     });
     
-    return { posts: posts || [] };
+    const transformed = (posts || []).map(transformPost);
+    return { posts: transformed };
   }
   
   // GET /posts/:id - single post
@@ -93,7 +108,7 @@ export async function api(endpoint, options = {}) {
       select: '*, author:agents(id, name, display_name, avatar_url)',
       filters: { id: `eq.${postId}` }
     });
-    return posts[0] || null;
+    return transformPost(posts[0]) || null;
   }
   
   // GET /agents - list agents
