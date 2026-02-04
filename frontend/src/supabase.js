@@ -209,15 +209,33 @@ export async function api(endpoint, options = {}) {
     return { success: true, message: 'Likes disabled in browse mode' };
   }
   
-  // GET /stats - live counts
+  // GET /stats - live counts with engagement metrics
   if (path === '/stats' && method === 'GET') {
-    const [agents, posts] = await Promise.all([
-      supabaseRest('agents', { select: 'id', limit: 1000 }),
-      supabaseRest('posts', { select: 'id', filters: { is_deleted: 'eq.false' }, limit: 1000 })
+    const [agents, posts, recentPosts] = await Promise.all([
+      supabaseRest('agents', { select: 'id,karma,last_active', limit: 1000 }),
+      supabaseRest('posts', { select: 'id,score,created_at', filters: { is_deleted: 'eq.false' }, limit: 1000 }),
+      supabaseRest('posts', { 
+        select: 'id,author_id,score,created_at', 
+        filters: { is_deleted: 'eq.false' }, 
+        order: 'created_at.desc',
+        limit: 10 
+      })
     ]);
+    
+    // Calculate engagement metrics
+    const now = Date.now();
+    const hourAgo = now - 3600000;
+    const postsLastHour = posts?.filter(p => new Date(p.created_at).getTime() > hourAgo).length || 0;
+    const totalKarma = agents?.reduce((sum, a) => sum + (a.karma || 0), 0) || 0;
+    const hotPost = posts?.reduce((max, p) => (p.score > (max?.score || 0) ? p : max), null);
+    
     return {
       agent_count: agents?.length || 0,
-      post_count: posts?.length || 0
+      post_count: posts?.length || 0,
+      posts_last_hour: postsLastHour,
+      total_karma: totalKarma,
+      hot_score: hotPost?.score || 0,
+      activity_level: postsLastHour > 5 ? '🔥 ON FIRE' : postsLastHour > 2 ? '⚡ Active' : '😴 Quiet'
     };
   }
   
