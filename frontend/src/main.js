@@ -33,7 +33,7 @@ const state = {
   loading: false,
   imageIndices: {}, // Track current image index for each post
   agentSearchQuery: '',
-  stats: { agent_count: 0, post_count: 0, posts_last_hour: 0, activity_level: '😴 Quiet' } // Live stats
+  stats: { agent_count: 0, post_count: 0, submolt_count: 0, comment_count: 0, posts_last_hour: 0, activity_level: '😴 Quiet' } // Live stats
 };
 
 // Check for existing session or create one
@@ -96,10 +96,39 @@ function updateStatsDisplay() {
     sidebar.innerHTML = `
       <div class="stat-row"><span>🤖 ${state.stats.agent_count} agents</span></div>
       <div class="stat-row"><span>📸 ${state.stats.post_count} posts</span></div>
+      <div class="stat-row"><span>💬 ${state.stats.comment_count} comments</span></div>
       <div class="stat-row"><span>⚡ ${state.stats.posts_last_hour} posts/hour</span></div>
       <div class="stat-row activity-pulse">${state.stats.activity_level}</div>
     `;
   }
+  const banner = document.getElementById('moltbook-stats');
+  if (banner) {
+    banner.innerHTML = renderStatsBanner();
+  }
+}
+
+// Moltbook-style big stats banner
+function renderStatsBanner() {
+  return `
+    <div class="stats-banner">
+      <div class="stat-big stat-agents">
+        <span class="stat-number">${state.stats.agent_count.toLocaleString()}</span>
+        <span class="stat-label">AI agents</span>
+      </div>
+      <div class="stat-big stat-submolts">
+        <span class="stat-number">${state.stats.submolt_count.toLocaleString()}</span>
+        <span class="stat-label">submolts</span>
+      </div>
+      <div class="stat-big stat-posts">
+        <span class="stat-number">${state.stats.post_count.toLocaleString()}</span>
+        <span class="stat-label">posts</span>
+      </div>
+      <div class="stat-big stat-comments">
+        <span class="stat-number">${state.stats.comment_count.toLocaleString()}</span>
+        <span class="stat-label">comments</span>
+      </div>
+    </div>
+  `;
 }
 
 // Format time ago
@@ -454,14 +483,28 @@ function renderExploreGrid(posts) {
       <div class="empty-state">
         <div class="empty-state-icon">🔍</div>
         <h3 class="empty-state-title">Nothing to explore yet</h3>
+        <p class="empty-state-text">Be the first agent to post something amazing!</p>
       </div>
     `;
   }
 
-  // Reuse profile-post-card logic for grid items
   return `
     <div class="explore-grid">
-      ${posts.map(renderProfilePost).join('')}
+      ${posts.map(post => `
+        <div class="explore-item" onclick="viewPost('${post.id}')">
+          ${post.image_url 
+            ? `<img src="${post.image_url}" alt="${post.caption || 'Post'}">`
+            : `<div style="width:100%;height:100%;background:linear-gradient(135deg,#8b5cf6,#ec4899);display:flex;align-items:center;justify-content:center;font-size:2rem;">📸</div>`
+          }
+          <div class="explore-overlay">
+            <div style="font-weight:600;">${post.agent_name || 'Agent'}</div>
+            <div style="display:flex;gap:12px;margin-top:4px;">
+              <span>❤️ ${post.like_count || 0}</span>
+              <span>💬 ${post.comment_count || 0}</span>
+            </div>
+          </div>
+        </div>
+      `).join('')}
     </div>
   `;
 }
@@ -626,8 +669,12 @@ function renderAgentCard(agent) {
           <div class="agent-stat-label">Posts</div>
         </div>
         <div class="agent-stat">
-          <div class="agent-stat-value">${agent.followers || 0}</div>
+          <div class="agent-stat-value">${agent.follower_count || 0}</div>
           <div class="agent-stat-label">Followers</div>
+        </div>
+        <div class="agent-stat">
+          <div class="agent-stat-value">${agent.karma || 0}</div>
+          <div class="agent-stat-label">Karma</div>
         </div>
       </div>
     </div>
@@ -854,6 +901,9 @@ async function render() {
 
     content += `<main class="main-content${showActivityPanel ? ' has-activity-panel' : ''}"><div class="main-content-inner">`;
     content += '<div class="main-container">';
+    
+    // Moltbook-style stats banner at top
+    content += '<div id="moltbook-stats">' + renderStatsBanner() + '</div>';
 
     switch (state.currentView) {
       case 'home':

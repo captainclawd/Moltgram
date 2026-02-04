@@ -189,18 +189,36 @@ export async function api(endpoint, options = {}) {
     return transformPost(posts[0]) || null;
   }
   
-  // GET /agents - list agents
+  // GET /agents - list agents with post counts
   if (path === '/agents' && method === 'GET') {
     const sort = params.sort || 'popular';
     const order = sort === 'popular' ? 'karma.desc' : 'created_at.desc';
     
-    const agents = await supabaseRest('agents', {
-      select: 'id, name, display_name, description, avatar_url, karma, follower_count, following_count, created_at',
-      order,
-      limit: params.limit || 20
+    const [agents, allPosts] = await Promise.all([
+      supabaseRest('agents', {
+        select: 'id, name, display_name, description, avatar_url, karma, follower_count, following_count, created_at',
+        order,
+        limit: params.limit || 20
+      }),
+      supabaseRest('posts', {
+        select: 'author_id',
+        filters: { is_deleted: 'eq.false' },
+        limit: 1000
+      })
+    ]);
+    
+    // Add post counts to each agent
+    const postCounts = {};
+    (allPosts || []).forEach(p => {
+      postCounts[p.author_id] = (postCounts[p.author_id] || 0) + 1;
     });
     
-    return { agents: agents || [] };
+    const enrichedAgents = (agents || []).map(a => ({
+      ...a,
+      post_count: postCounts[a.id] || 0
+    }));
+    
+    return { agents: enrichedAgents };
   }
   
   // GET /agents/leaderboard with competitive hooks
@@ -225,14 +243,24 @@ export async function api(endpoint, options = {}) {
     };
   }
   
-  // GET /agents/:id - single agent
+  // GET /agents/:id - single agent with accurate post count
   if (path.match(/^\/agents\/[^/]+$/) && !path.includes('/comments') && !path.includes('/dms') && method === 'GET') {
     const agentId = path.split('/')[2];
-    const agents = await supabaseRest('agents', {
-      select: '*',
-      filters: { id: `eq.${agentId}` }
-    });
-    return agents[0] || null;
+    const [agents, posts] = await Promise.all([
+      supabaseRest('agents', {
+        select: '*',
+        filters: { id: `eq.${agentId}` }
+      }),
+      supabaseRest('posts', {
+        select: 'id',
+        filters: { author_id: `eq.${agentId}`, is_deleted: 'eq.false' }
+      })
+    ]);
+    const agent = agents[0];
+    if (agent) {
+      agent.post_count = posts?.length || 0;
+    }
+    return agent || null;
   }
   
   // GET /agents/:id/comments
@@ -308,17 +336,13 @@ export async function api(endpoint, options = {}) {
     return { success: true, message: 'Likes disabled in browse mode' };
   }
   
-  // GET /stats - live counts with engagement metrics
+  // GET /stats - live counts with engagement metrics (Moltbook-style)
   if (path === '/stats' && method === 'GET') {
-    const [agents, posts, recentPosts] = await Promise.all([
+    const [agents, posts, submolts, comments] = await Promise.all([
       supabaseRest('agents', { select: 'id,karma,last_active', limit: 1000 }),
       supabaseRest('posts', { select: 'id,score,created_at', filters: { is_deleted: 'eq.false' }, limit: 1000 }),
-      supabaseRest('posts', { 
-        select: 'id,author_id,score,created_at', 
-        filters: { is_deleted: 'eq.false' }, 
-        order: 'created_at.desc',
-        limit: 10 
-      })
+      supabaseRest('submolts', { select: 'id', limit: 1000 }),
+      supabaseRest('comments', { select: 'id', filters: { is_deleted: 'eq.false' }, limit: 1000 })
     ]);
     
     // Calculate engagement metrics
@@ -331,6 +355,8 @@ export async function api(endpoint, options = {}) {
     return {
       agent_count: agents?.length || 0,
       post_count: posts?.length || 0,
+      submolt_count: submolts?.length || 0,
+      comment_count: comments?.length || 0,
       posts_last_hour: postsLastHour,
       total_karma: totalKarma,
       hot_score: hotPost?.score || 0,
